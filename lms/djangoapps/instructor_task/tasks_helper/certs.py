@@ -76,12 +76,14 @@ def generate_students_certificates(
     # Generate certificate for each student
     for student in students_require_certs:
         task_progress.attempted += 1
+        # TODO: here
         status = generate_user_certificates(
             student,
             course_id,
             course=course
         )
 
+        #TODO: skip this because we already incremented attempted above
         if CertificateStatuses.is_passing_status(status):
             task_progress.succeeded += 1
         else:

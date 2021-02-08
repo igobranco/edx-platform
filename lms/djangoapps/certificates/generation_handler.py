@@ -193,6 +193,12 @@ def generate_user_certificates(student, course_key, course=None, insecure=False,
         forced_grade - a string indicating to replace grade parameter. if present grading
                        will be skipped.
     """
+    if is_using_certificate_allowlist_and_is_on_allowlist(student, course_key):
+        # Note that this will launch an asynchronous task, and so cannot return the certificate status. This is a
+        # change from the older certificate code that tries to immediately create a cert.
+        log.info(f'{course_key} is using allowlist certificates, and the user {student.id} is on its allowlist. '
+                 f'Attempt will be made to regenerate an allowlist certificate.')
+        return generate_allowlist_certificate_task(student, course_key)
 
     if not course:
         course = modulestore().get_course(course_key, depth=0)
