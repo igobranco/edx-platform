@@ -92,7 +92,7 @@ COURSEWARE_MICROFRONTEND_PROGRESS_MILESTONES_FIRST_SECTION_CELEBRATION = CourseW
 #   Supports staged rollout to students for a new micro-frontend-based implementation of the
 #   courseware page.
 # .. toggle_use_cases: temporary, open_edx
-# .. toggle_creation_date: 2021-02-03
+# .. toggle_creation_date: 2021-02-16
 # .. toggle_target_removal_date: None
 # .. toggle_warnings: Also set settings.LEARNING_MICROFRONTEND_URL and ENABLE_COURSEWARE_MICROFRONTEND and
 #   COURSEWARE_MICROFRONTEND_PROGRESS_MILESTONES.

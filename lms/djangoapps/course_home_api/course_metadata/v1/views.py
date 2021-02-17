@@ -77,9 +77,9 @@ class CourseHomeMetadataView(RetrieveAPIView):
 
         course = course_detail(request, request.user.username, course_key)
         user_is_enrolled = CourseEnrollment.is_enrolled(request.user, course_key_string)
-
+        user_timezone = self.request.GET.get('user_timezone', None)
         celebrations = {
-            'should_celebrate_streak': UserCelebration.perform_streak_updates(request.user, course_key)
+            'streak_length_to_celebrate': UserCelebration.perform_streak_updates(request.user, course_key, user_timezone),
         }
         data = {
             'course_id': course.id,

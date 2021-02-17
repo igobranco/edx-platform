@@ -96,8 +96,6 @@ log = logging.getLogger(__name__)
 AUDIT_LOG = logging.getLogger("audit")
 SessionStore = import_module(settings.SESSION_ENGINE).SessionStore  # pylint: disable=invalid-name
 
-STREAK_LENGTH_TO_CELEBRATE = 3
-STREAK_BREAK_LENGTH = 1
 # enroll status changed events - signaled to email_marketing.  See email_marketing.tasks for more info
 
 
@@ -3124,99 +3122,76 @@ class AccountRecoveryConfiguration(ConfigurationModel):
 
 class UserCelebration(TimeStampedModel):
     """
-    Keeps track of how we've celebrated a user's course progress.
+    Keeps track of how we've celebrated a user's progress on the platform.
     This class is for course agnostic celebrations (not specific to a particular enrollment).
     CourseEnrollmentCelebration is for celebrations that happen separately for each separate course.
-
-    The first_day_of_streak, last_day_of_streak and last_streak_celebration fields are used to
-    control celebration of the streak feature.
-    A streak is when a learner visits the learning MFE N number of times.
-    The business logic of streaks for a 3 day streak and 1 day break is the following:
-    1. Each streak should be celebrated exactly once, once the learner has completed the streak.
-    2. If a learner misses enough days to count as a break, the streak resets back to 0.
-    3. The streak is measured against the learner's configured timezone
-    4. We keep track of the total length of the streak, so there is a possibility in the future
-    to add multiple celebrations for longer streaks.
-    5. We keep track of the longest_ever_streak field for potential future use for badging purposes.
 
     .. no_pii:
     """
     user = models.OneToOneField(User, models.CASCADE, related_name='celebration')
-    first_day_of_streak = models.DateField(default=None, null=True, blank=True)
+    # The last_day_of_streak and streak_length fields are used to
+    # control celebration of the streak feature.
+    # A streak is when a learner visits the learning MFE N days in a row.
+    # The business logic of streaks for a 3 day streak and 1 day break is the following:
+    # 1. Each streak should be celebrated exactly once, once the learner has completed the streak.
+    # 2. If a learner misses enough days to count as a break, the streak resets back to 0.
+    # 3. The streak is measured against the learner's configured timezone
+    # 4. We keep track of the total length of the streak, so there is a possibility in the future
+    # to add multiple celebrations for longer streaks.
+    # 5. We keep track of the longest_ever_streak field for potential future use for badging purposes.
     last_day_of_streak = models.DateField(default=None, null=True, blank=True)
-    last_streak_celebration = models.DateField(default=None, null=True, blank=True)
+    streak_length = models.IntegerField(default=0)
     longest_ever_streak = models.IntegerField(default=0)
+    STREAK_LENGTHS_TO_CELEBRATE = [3]
+    STREAK_BREAK_LENGTH = 1
 
     def __str__(self):
         return (
-            "[CourseEnrollmentCelebration] user: {}; first_day_of_streak {};"
-            " last_day_of_streak {}; last_streak_celebration {}; longest_ever_streak {};"
-        ).format(self.user.username, self.first_day_of_streak,
-                 self.last_day_of_streak, self.last_streak_celebration, self.longest_ever_streak)
+            '[UserCelebration] user: {}; last_day_of_streak {}; streak_length {}; longest_ever_streak {};'
+        ).format(self.user.username, self.last_day_of_streak, self.streak_length, self.longest_ever_streak)
 
     @classmethod
-    def _get_now(cls):
+    def _get_now(cls, user_timezone):
         """ Retrieve the value for the current datetime in the user's timezone """
         # importing here to avoid a circular import
         from lms.djangoapps.courseware.context_processor import user_timezone_locale_prefs
         user_timezone_locale = user_timezone_locale_prefs(crum.get_current_request())
-        user_timezone = timezone(user_timezone_locale['user_timezone'] or str(UTC))
+        user_timezone = timezone(user_timezone_locale['user_timezone'] or user_timezone or str(UTC))
         return user_timezone.localize(datetime.now())
 
-    @classmethod
-    def _calculate_streak_updates(cls, celebration, now):
-        """ Calculate the updates that should me applied to the streak fields of the provided celebration """
-        first_day_of_streak = celebration.first_day_of_streak
-        last_day_of_streak = celebration.last_day_of_streak
-        last_streak_celebration = celebration.last_streak_celebration
-        today = now.date()
-        yesterday = today - timedelta(days=1)
-        should_celebrate = False
+    def _calculate_streak_updates(self, today):
+        """ Calculate the updates that should be applied to the streak fields of the provided celebration """
+        last_day_of_streak = self.last_day_of_streak
+        streak_length = self.streak_length
+        streak_length_to_celebrate = None
 
-        first_ever_streak = None is last_streak_celebration is first_day_of_streak is last_day_of_streak
-        in_active_streak = last_day_of_streak and first_day_of_streak
-        broken_streak = last_day_of_streak not in (yesterday, today)
-        can_start_new_streak = last_day_of_streak and last_day_of_streak + timedelta(days=STREAK_BREAK_LENGTH) < today
+        first_ever_streak = last_day_of_streak is None
+        break_length = timedelta(days=self.STREAK_BREAK_LENGTH)
+        should_start_new_streak = last_day_of_streak and last_day_of_streak + break_length < today
+        already_updated_streak_today = last_day_of_streak == today
 
-        if first_ever_streak:
+        last_day_of_streak = today
+        if first_ever_streak or should_start_new_streak:
             # Start new streak
-            first_day_of_streak = today
-            last_day_of_streak = today
-        elif broken_streak:
-            if can_start_new_streak:
-                # If we were on a break and the break is over start new streak
-                first_day_of_streak = today
-                last_day_of_streak = today
-        elif in_active_streak:
-            # Increment existing streak
-            last_day_of_streak = today
-
-            streak_length = (last_day_of_streak - first_day_of_streak).days + 1
-            if streak_length == STREAK_LENGTH_TO_CELEBRATE:
+            streak_length = 1
+        elif not already_updated_streak_today:
+            streak_length += 1
+            if streak_length in self.STREAK_LENGTHS_TO_CELEBRATE:
                 # Celebrate if we didn't already celebrate today
-                if not last_streak_celebration == today:
-                    last_streak_celebration = today
-                    should_celebrate = True
+                streak_length_to_celebrate = streak_length
 
-        return (first_day_of_streak, last_day_of_streak, last_streak_celebration), should_celebrate
+        return last_day_of_streak, streak_length, streak_length_to_celebrate
 
-    @classmethod
-    def _update_streak(cls, celebration, streak_dates):
+    def _update_streak(self, last_day_of_streak, streak_length):
         """ Update the celebration with the new streak data """
-        (first_day_of_streak, last_day_of_streak, last_streak_celebration) = streak_dates
         # If anything needs to be updated, update the celebration in the database
-        if (first_day_of_streak != celebration.first_day_of_streak or
-                last_day_of_streak != celebration.last_day_of_streak or
-                last_streak_celebration != celebration.last_streak_celebration):
-            celebration.first_day_of_streak = first_day_of_streak
-            celebration.last_day_of_streak = last_day_of_streak
-            celebration.last_streak_celebration = last_streak_celebration
-            streak_length = (last_day_of_streak - first_day_of_streak).days + 1
-            if celebration.longest_ever_streak < streak_length:
-                celebration.longest_ever_streak = streak_length
+        if last_day_of_streak != self.last_day_of_streak:
+            self.last_day_of_streak = last_day_of_streak
+            self.streak_length = streak_length
+            if self.longest_ever_streak < streak_length:
+                self.longest_ever_streak = streak_length
 
-            celebration.save()
-        return celebration
+            self.save()
 
     @classmethod
     def _get_celebration(cls, user, course_key):
@@ -3232,23 +3207,33 @@ class UserCelebration(TimeStampedModel):
             return celebration
 
     @classmethod
-    def perform_streak_updates(cls, user, course_key):
-        """ Determine and return if the user should see a streak celebration.
+    def perform_streak_updates(cls, user, course_key, user_timezone=None):
+        """ Determine if the user should see a streak celebration and
+            return the length of the streak the user should celebrate.
             Also update the streak data that is stored in the database."""
-
+        # importing here to avoid a circular import
+        from lms.djangoapps.courseware.masquerade import is_masquerading_as_specific_student
         if not user or user.is_anonymous:
-            return False
+            return None
+
+        if is_masquerading_as_specific_student(user, course_key):
+            return None
 
         celebration = cls._get_celebration(user, course_key)
 
         if not celebration:
-            return False
+            return None
 
-        now = cls._get_now()
-        streak_dates, should_celebrate = cls._calculate_streak_updates(celebration, now)
-        celebration = cls._update_streak(celebration, streak_dates)
+        today = cls._get_now(user_timezone).date()
 
-        return should_celebrate
+        # pylint: disable=protected-access
+        last_day_of_streak, streak_length, streak_length_to_celebrate = \
+            celebration._calculate_streak_updates(today)
+        # pylint: enable=protected-access
+
+        cls._update_streak(celebration, last_day_of_streak, streak_length)
+
+        return streak_length_to_celebrate
 
 
 class CourseEnrollmentCelebration(TimeStampedModel):
@@ -3266,30 +3251,15 @@ class CourseEnrollmentCelebration(TimeStampedModel):
 
     See the create_course_enrollment_celebration signal handler for how these get created.
 
-    The first_day_of_streak, last_day_of_streak and last_streak_celebration fields are used to
-    control celebration of the streak feature.
-    A streak is when a learner visits the learning MFE N number of times.
-    The business logic of streaks for a 3 day streak and 1 day break is the following:
-    1. Each streak should be celebrated exactly once, once the learner has completed the streak.
-    2. If a learner misses enough days to count as a break, the streak resets back to 0.
-    3. The streak is measured against the learner's configured timezone
-    4. We keep track of the total length of the streak, so there is a possibility in the future
-    to add multiple celebrations for longer streaks.
-
     .. no_pii:
     """
     enrollment = models.OneToOneField(CourseEnrollment, models.CASCADE, related_name='celebration')
     celebrate_first_section = models.BooleanField(default=False)
-    first_day_of_streak = models.DateField(default=None, null=True, blank=True)
-    last_day_of_streak = models.DateField(default=None, null=True, blank=True)
-    last_streak_celebration = models.DateField(default=None, null=True, blank=True)
 
     def __str__(self):
         return (
-            "[CourseEnrollmentCelebration] course: {}; user: {}; first_section: {}; first_day_of_streak {};"
-            " last_day_of_streak {}; last_streak_celebration {}"
-        ).format(self.enrollment.course.id, self.enrollment.user.username, self.celebrate_first_section,
-                 self.first_day_of_streak, self.last_day_of_streak, self.last_streak_celebration)
+            '[CourseEnrollmentCelebration] course: {}; user: {}; first_section: {};'
+        ).format(self.enrollment.course.id, self.enrollment.user.username, self.celebrate_first_section)
 
     @staticmethod
     def should_celebrate_first_section(enrollment):

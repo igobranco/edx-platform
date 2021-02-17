@@ -2,7 +2,7 @@
 Tests for courseware API
 """
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import urlencode
 
 import ddt
@@ -11,7 +11,6 @@ from completion.test_utils import CompletionWaffleTestMixin, submit_completions_
 from django.conf import settings
 from django.test.client import RequestFactory
 from django.urls import reverse  # lint-amnesty, pylint: disable=unused-import
-from pytz import UTC
 
 from edx_toggles.toggles.testutils import override_waffle_flag
 from lms.djangoapps.certificates.api import get_certificate_url
@@ -28,7 +27,7 @@ from lms.djangoapps.courseware.toggles import (
 )
 from lms.djangoapps.verify_student.services import IDVerificationService
 from common.djangoapps.student.models import (
-    CourseEnrollment, CourseEnrollmentCelebration, STREAK_LENGTH_TO_CELEBRATE, UserCelebration
+    CourseEnrollment, CourseEnrollmentCelebration
 )
 from common.djangoapps.student.tests.factories import CourseEnrollmentCelebrationFactory, UserFactory
 from xmodule.modulestore.django import modulestore
@@ -80,7 +79,7 @@ class BaseCoursewareTests(SharedModuleStoreTestCase):
 @override_waffle_flag(REDIRECT_TO_COURSEWARE_MICROFRONTEND, active=True)
 @override_waffle_flag(COURSEWARE_MICROFRONTEND_PROGRESS_MILESTONES, active=True)
 @override_waffle_flag(COURSEWARE_MICROFRONTEND_PROGRESS_MILESTONES_STREAK_CELEBRATION, active=True)
-class CourseApiTestViews(BaseCoursewareTests, MasqueradeMixin):
+class CourseApiTestViews(BaseCoursewareTests):
     """
     Tests for the courseware REST API
     """
@@ -181,36 +180,12 @@ class CourseApiTestViews(BaseCoursewareTests, MasqueradeMixin):
             else:
                 assert not response.data['can_load_courseware']['has_access']
 
-    def test_happy_path_for_streak(self):
-        """ Test that metadata endpoint returns correct data for the streak celebration"""
+    def test_streak_data_in_response(self):
+        """ Test that metadata endpoint returns data for the streak celebration """
         CourseEnrollment.enroll(self.user, self.course.id, 'audit')
-
-        today = datetime.now(UTC)
-        for i in range(1, STREAK_LENGTH_TO_CELEBRATE + 1):
-            with mock.patch.object(UserCelebration, '_get_now') as get_now_mock:
-                get_now_mock.return_value = today + timedelta(days=i)
-                response = self.client.get(self.url, content_type='application/json')
-                should_celebrate = response.json()['celebrations']['should_celebrate_streak']
-                self.assertEqual(should_celebrate, i == STREAK_LENGTH_TO_CELEBRATE)
-
-    @mock.patch.object(UserCelebration, 'perform_streak_updates')
-    def test_streak_masquerade(self, perform_streak_updates_mock):
-        """ Don't update streak data when masquerading as a specific student """
-        self.user.is_staff = True
-        self.user.save()
-
-        user = UserFactory()
-        CourseEnrollment.enroll(user, self.course.id, 'verified')
-
-        self.update_masquerade(username=user.username)
-        now = datetime.now(UTC)
-        for i in range(1, STREAK_LENGTH_TO_CELEBRATE + 1):
-            with mock.patch.object(UserCelebration, '_get_now') as get_now_mock:
-                get_now_mock.return_value = now + timedelta(days=i)
-                response = self.client.get(self.url, content_type='application/json')
-                should_celebrate = response.json()['celebrations']['should_celebrate_streak']
-                self.assertEqual(should_celebrate, False)
-                perform_streak_updates_mock.assert_not_called()
+        response = self.client.get(self.url, content_type='application/json')
+        celebrations = response.json()['celebrations']
+        assert 'streak_length_to_celebrate' in celebrations
 
 
 class SequenceApiTestViews(BaseCoursewareTests):

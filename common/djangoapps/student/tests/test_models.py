@@ -6,11 +6,13 @@ import ddt
 import factory
 import mock
 import pytz
+from crum import set_current_request
 from django.contrib.auth.models import AnonymousUser, User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.core.cache import cache
 from django.db.models import signals
 from django.db.models.functions import Lower
 from django.test import TestCase
+from freezegun import freeze_time
 from opaque_keys.edx.keys import CourseKey
 from pytz import UTC
 
@@ -37,8 +39,6 @@ from common.djangoapps.student.models import (
     ManualEnrollmentAudit,
     PendingEmailChange,
     PendingNameChange,
-    STREAK_LENGTH_TO_CELEBRATE,
-    STREAK_BREAK_LENGTH
 )
 from common.djangoapps.student.tests.factories import AccountRecoveryFactory, CourseEnrollmentFactory, UserFactory
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
@@ -265,158 +265,205 @@ class UserCelebrationTests(SharedModuleStoreTestCase):
     """
     @classmethod
     def setUpClass(cls):
-        super(UserCelebrationTests, cls).setUpClass()
+        super().setUpClass()
         cls.course = CourseFactory()
         cls.course_key = cls.course.id  # pylint: disable=no-member
 
     def setUp(self):
-        super(UserCelebrationTests, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user = UserFactory()
         self.request = mock.Mock()
         self.request.user = self.user
-        CourseEnrollmentFactory(course_id=self.course.id)  # pylint: disable=no-member
+        CourseEnrollmentFactory(course_id=self.course_key)
+        UserCelebration.STREAK_LENGTHS_TO_CELEBRATE = [3]
+        UserCelebration.STREAK_BREAK_LENGTH = 1
+        self.STREAK_LENGTH_TO_CELEBRATE = UserCelebration.STREAK_LENGTHS_TO_CELEBRATE[0]
+        self.STREAK_BREAK_LENGTH = UserCelebration.STREAK_BREAK_LENGTH
+        set_current_request(self.request)
+        self.addCleanup(set_current_request, None)
 
     def test_first_check_streak_celebration(self):
-        should_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
+        STREAK_LENGTH_TO_CELEBRATE = UserCelebration.perform_streak_updates(self.user, self.course_key)
         today = datetime.datetime.now(UTC).date()
-        self.assertEqual(self.user.celebration.first_day_of_streak, today)
-        self.assertEqual(self.user.celebration.last_day_of_streak, today)
-        self.assertEqual(self.user.celebration.last_day_of_streak, today)
-        self.assertEqual(should_celebrate, False)
+        assert self.user.celebration.streak_length == 1
+        assert self.user.celebration.last_day_of_streak == today
+        assert STREAK_LENGTH_TO_CELEBRATE is None
 
-    # lint-amnesty, pylint: disable=line-too-long
+    # pylint: disable=line-too-long
     def test_celebrate_only_once_in_continuous_streak(self):
         """
         Sample run for a 3 day streak and 1 day break. See last column for explanation.
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | today   | first_day_of_streak | last_day_of_streak | last day of celebration | should_celebrate | Note                                          |
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | 2/4/21  | 2/4/21              | 2/4/21             | None                    | FALSE            | Day 1 of Streak                               |
-        | 2/5/21  | 2/4/21              | 2/5/21             | None                    | FALSE            | Day 2 of Streak                               |
-        | 2/6/21  | 2/4/21              | 2/6/21             | 2/6/21                  | TRUE             | Completed 3 Day Streak so we should celebrate |
-        | 2/7/21  | 2/4/21              | 2/7/21             | 2/6/21                  | FALSE            | Day 4 of Streak                               |
-        | 2/8/21  | 2/4/21              | 2/8/21             | 2/6/21                  | FALSE            | Day 5 of Streak                               |
-        | 2/9/21  | 2/4/21              | 2/9/21             | 2/6/21                  | FALSE            | Day 6 of Streak                               |
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
+        +---------+---------------------+--------------------+-------------------------+------------------+------------------+
+        | today   | streak_length       | last_day_of_streak | streak_length_to_celebrate | Note                             |
+        +---------+---------------------+--------------------+-------------------------+------------------+------------------+
+        | 2/4/21  | 1                   | 2/4/21             | None                    | Day 1 of Streak                     |
+        | 2/5/21  | 2                   | 2/5/21             | None                    | Day 2 of Streak                     |
+        | 2/6/21  | 3                   | 2/6/21             | 3                       | Completed 3 Day Streak so we should celebrate |
+        | 2/7/21  | 4                   | 2/7/21             | None                    | Day 4 of Streak                     |
+        | 2/8/21  | 5                   | 2/8/21             | None                    | Day 5 of Streak                     |
+        | 2/9/21  | 6                   | 2/9/21             | None                    | Day 6 of Streak                     |
+        +---------+---------------------+--------------------+-------------------------+------------------+------------------+
         """
         now = datetime.datetime.now(UTC)
-        for i in range(1, (STREAK_LENGTH_TO_CELEBRATE * 2) + 1):
-            with mock.patch.object(UserCelebration, '_get_now') as get_now_mock:
-                get_now_mock.return_value = now + datetime.timedelta(days=i)
-                should_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
-                self.assertEqual(should_celebrate, i == STREAK_LENGTH_TO_CELEBRATE)
+        for i in range(1, (self.STREAK_LENGTH_TO_CELEBRATE * 2) + 1):
+            with freeze_time(now + datetime.timedelta(days=i)):
+                STREAK_LENGTH_TO_CELEBRATE = UserCelebration.perform_streak_updates(self.user, self.course_key)
+                assert bool(STREAK_LENGTH_TO_CELEBRATE) == (i == self.STREAK_LENGTH_TO_CELEBRATE)
 
-    # lint-amnesty, pylint: disable=line-too-long
+    # pylint: disable=line-too-long
     def test_longest_streak_updates_correctly(self):
         """
         Sample run for a 3 day streak and 1 day break. See last column for explanation.
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | today   | first_day_of_streak | last_day_of_streak | last day of celebration | should_celebrate | Note                                          |
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | 2/4/21  | 2/4/21              | 2/4/21             | None                    | FALSE            | longest_streak_ever is 1                      |
-        | 2/5/21  | 2/4/21              | 2/5/21             | None                    | FALSE            | longest_streak_ever is 2                      |
-        | 2/6/21  | 2/4/21              | 2/6/21             | 2/6/21                  | TRUE             | longest_streak_ever is 3                      |
-        | 2/7/21  | 2/4/21              | 2/7/21             | 2/6/21                  | FALSE            | longest_streak_ever is 4                      |
-        | 2/8/21  | 2/4/21              | 2/8/21             | 2/6/21                  | FALSE            | longest_streak_ever is 5                      |
-        | 2/9/21  | 2/4/21              | 2/9/21             | 2/6/21                  | FALSE            | longest_streak_ever is 6                      |
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
+        +---------+---------------------+--------------------+-------------------------+------------------+---------------------+
+        | today   | streak_length       | last_day_of_streak | streak_length_to_celebrate | Note                                |
+        +---------+---------------------+--------------------+-------------------------+------------------+---------------------+
+        | 2/4/21  | 1                   | 2/4/21             | None                    | longest_streak_ever is 1               |
+        | 2/5/21  | 2                   | 2/5/21             | None                    | longest_streak_ever is 2               |
+        | 2/6/21  | 3                   | 2/6/21             | 3                       | longest_streak_ever is 3               |
+        | 2/7/21  | 4                   | 2/7/21             | None                    | longest_streak_ever is 4               |
+        | 2/8/21  | 5                   | 2/8/21             | None                    | longest_streak_ever is 5               |
+        | 2/9/21  | 6                   | 2/9/21             | None                    | longest_streak_ever is 6               |
+        +---------+---------------------+--------------------+-------------------------+------------------+---------------------+
         """
         now = datetime.datetime.now(UTC)
-        for i in range(1, (STREAK_LENGTH_TO_CELEBRATE * 2) + 1):
-            with mock.patch.object(UserCelebration, '_get_now') as get_now_mock:
-                get_now_mock.return_value = now + datetime.timedelta(days=i)
+        for i in range(1, (self.STREAK_LENGTH_TO_CELEBRATE * 2) + 1):
+            with freeze_time(now + datetime.timedelta(days=i)):
                 UserCelebration.perform_streak_updates(self.user, self.course_key)
-                self.assertEqual(self.user.celebration.longest_ever_streak, i)
+                assert self.user.celebration.longest_ever_streak == i
 
-    # lint-amnesty, pylint: disable=line-too-long
+    # pylint: disable=line-too-long
     def test_celebrate_only_once_with_multiple_calls_on_the_same_day(self):
         """
         Sample run for a 3 day streak and 1 day break. See last column for explanation.
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | today   | first_day_of_streak | last_day_of_streak | last day of celebration | should_celebrate | Note                                          |
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | 2/4/21  | 2/4/21              | 2/4/21             | None                    | FALSE            | Day 1 of Streak                               |
-        | 2/4/21  | 2/4/21              | 2/4/21             | None                    | FALSE            | Day 1 of Streak                               |
-        | 2/5/21  | 2/4/21              | 2/5/21             | None                    | FALSE            | Day 2 of Streak                               |
-        | 2/5/21  | 2/4/21              | 2/5/21             | None                    | FALSE            | Day 2 of Streak                               |
-        | 2/6/21  | 2/4/21              | 2/6/21             | 2/6/21                  | TRUE             | Completed 3 Day Streak so we should celebrate |
-        | 2/6/21  | 2/4/21              | 2/6/21             | 2/6/21                  | FALSE            | Already celebrated this streak.               |
-        +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
+        +---------+---------------------+--------------------+-------------------------+------------------+----------------------------+
+        | today   | streak_length       | last_day_of_streak | streak_length_to_celebrate | Note                                       |
+        +---------+---------------------+--------------------+-------------------------+------------------+----------------------------+
+        | 2/4/21  | 1                   | 2/4/21             | None                    | Day 1 of Streak                               |
+        | 2/4/21  | 1                   | 2/4/21             | None                    | Day 1 of Streak                               |
+        | 2/5/21  | 2                   | 2/5/21             | None                    | Day 2 of Streak                               |
+        | 2/5/21  | 2                   | 2/5/21             | None                    | Day 2 of Streak                               |
+        | 2/6/21  | 3                   | 2/6/21             | 3                       | Completed 3 Day Streak so we should celebrate |
+        | 2/6/21  | 3                   | 2/6/21             | None                    | Already celebrated this streak.               |
+        +---------+---------------------+--------------------+-------------------------+------------------+----------------------------+
         """
         now = datetime.datetime.now(UTC)
-        for i in range(1, STREAK_LENGTH_TO_CELEBRATE + 1):
-            with mock.patch.object(UserCelebration, '_get_now') as get_now_mock:
-                get_now_mock.return_value = now + datetime.timedelta(days=i)
-                should_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
-                self.assertEqual(should_celebrate, i == STREAK_LENGTH_TO_CELEBRATE)
-                should_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
-                self.assertEqual(should_celebrate, False)
+        for i in range(1, self.STREAK_LENGTH_TO_CELEBRATE + 1):
+            with freeze_time(now + datetime.timedelta(days=i)):
+                streak_length_to_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
+                assert bool(streak_length_to_celebrate) == (i == self.STREAK_LENGTH_TO_CELEBRATE)
+                streak_length_to_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
+                assert streak_length_to_celebrate is None
 
-    # lint-amnesty, pylint: disable=line-too-long
-    def test_celebration_with_utc(self):
+    def test_celebration_with_user_passed_in_timezone(self):
         """
-        Check that the _get_now method uses the user's timezone
+        Check that the _get_now method uses the user's timezone from the browser if none is configured
+        """
+        now = UserCelebration._get_now('Asia/Tokyo')  # pylint: disable=protected-access
+        assert str(now.tzinfo) == 'Asia/Tokyo'
+
+    def test_celebration_with_user_configured_timezone(self):
+        """
+        Check that the _get_now method uses the user's configured timezone
+        over the browser timezone that is passed in as a parameter
         """
         set_user_preference(self.user, 'time_zone', 'Asia/Tokyo')
-        with mock.patch('crum.get_current_request', return_value=self.request):
-            now = UserCelebration._get_now()  # lint-amnesty, pylint: disable=protected-access
-            self.assertEqual(str(now.tzinfo), 'Asia/Tokyo')
+        now = UserCelebration._get_now('America/New_York')  # pylint: disable=protected-access
+        assert str(now.tzinfo) == 'Asia/Tokyo'
 
-    # lint-amnesty, pylint: disable=line-too-long
-    def test_celebrate_twice_with_break_in_between(self):
+    # pylint: disable=line-too-long
+    def test_celebrate_twice_with_broken_streak_in_between(self):
         """
         Sample run for a 3 day streak and 1 day break. See last column for explanation.
         +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | today   | first_day_of_streak | last_day_of_streak | last day of celebration | should_celebrate | Note                                          |
+        | today   | streak_length       | last_day_of_streak | streak_length_to_celebrate | Note                                |
         +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | 2/4/21  | 2/4/21              | 2/4/21             | None                    | FALSE            | Day 1 of Streak                               |
-        | 2/5/21  | 2/4/21              | 2/5/21             | None                    | FALSE            | Day 2 of Streak                               |
-        | 2/6/21  | 2/4/21              | 2/6/21             | 2/6/21                  | TRUE             | Completed 3 Day Streak so we should celebrate |
+        | 2/4/21  | 1                   | 2/4/21             | None                    | Day 1 of Streak                               |
+        | 2/5/21  | 2                   | 2/5/21             | None                    | Day 2 of Streak                               |
+        | 2/6/21  | 3                   | 2/6/21             | 3                       | Completed 3 Day Streak so we should celebrate |
           No Accesses on 2/7/21
-        | 2/8/21  | 2/8/21              | 2/8/21             | 2/6/21                  | FALSE            | Day 1 of Streak                               |
-        | 2/9/21  | 2/8/21              | 2/9/21             | 2/6/21                  | FALSE            | Day 2 of Streak                               |
-        | 2/10/21 | 2/8/21              | 2/10/21            | 2/10/21                 | TRUE             | Completed 3 Day Streak so we should celebrate |
+        | 2/8/21  | 1                   | 2/8/21             | None                    | Day 1 of Streak                               |
+        | 2/9/21  | 2                   | 2/9/21             | None                    | Day 2 of Streak                               |
+        | 2/10/21 | 3                   | 2/10/21            | 3                       | Completed 3 Day Streak so we should celebrate |
         +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
         """
         now = datetime.datetime.now(UTC)
-        for i in range(1, STREAK_LENGTH_TO_CELEBRATE + STREAK_BREAK_LENGTH + STREAK_LENGTH_TO_CELEBRATE + 1):
-            with mock.patch.object(UserCelebration, '_get_now') as get_now_mock:
-                if STREAK_LENGTH_TO_CELEBRATE < i <= STREAK_LENGTH_TO_CELEBRATE + STREAK_BREAK_LENGTH:
+        for i in range(1, self.STREAK_LENGTH_TO_CELEBRATE + self.STREAK_BREAK_LENGTH + self.STREAK_LENGTH_TO_CELEBRATE + 1):
+            with freeze_time(now + datetime.timedelta(days=i)):
+                if self.STREAK_LENGTH_TO_CELEBRATE < i <= self.STREAK_LENGTH_TO_CELEBRATE + self.STREAK_BREAK_LENGTH:
                     # Don't make any checks during the break
                     continue
-                get_now_mock.return_value = now + datetime.timedelta(days=i)
-                should_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
-                if i <= STREAK_LENGTH_TO_CELEBRATE:
-                    self.assertEqual(should_celebrate, i == STREAK_LENGTH_TO_CELEBRATE)
+                streak_length_to_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
+                if i <= self.STREAK_LENGTH_TO_CELEBRATE:
+                    assert bool(streak_length_to_celebrate) == (i == self.STREAK_LENGTH_TO_CELEBRATE)
                 else:
-                    self.assertEqual(should_celebrate, i == STREAK_LENGTH_TO_CELEBRATE + STREAK_BREAK_LENGTH + STREAK_LENGTH_TO_CELEBRATE)
+                    assert bool(streak_length_to_celebrate) == (i == self.STREAK_LENGTH_TO_CELEBRATE + self.STREAK_BREAK_LENGTH + self.STREAK_LENGTH_TO_CELEBRATE)
 
-    # lint-amnesty, pylint: disable=line-too-long
+    # pylint: disable=line-too-long
     def test_streak_resets_if_day_is_missed(self):
         """
-        Sample run for a 3 day streak with the learner coming back every other day.
+        Sample run for a 3 day streak and 1 day break with the learner coming back every other day.
         Therefore the streak keeps resetting.
         +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | today   | first_day_of_streak | last_day_of_streak | last day of celebration | should_celebrate | Note                                          |
+        | today   | streak_length       | last_day_of_streak | streak_length_to_celebrate | Note                                          |
         +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
-        | 2/4/21  | 2/4/21              | 2/4/21             | None                    | FALSE            | Day 1 of Streak                               |
+        | 2/4/21  | 1                   | 2/4/21             | None                    | Day 1 of Streak                               |
           No Accesses on 2/5/21
-        | 2/6/21  | 2/6/21              | 2/6/21             | None                    | FALSE            | Day 2 of streak was missed, so streak resets  |
+        | 2/6/21  | 1                   | 2/6/21             | None                    | Day 2 of streak was missed, so streak resets  |
           No Accesses on 2/7/21
-        | 2/8/21  | 2/8/21              | 2/8/21             | None                    | FALSE            | Day 2 of streak was missed, so streak resets  |
+        | 2/8/21  | 1                   | 2/8/21             | None                    | Day 2 of streak was missed, so streak resets  |
           No Accesses on 2/9/21
-        | 2/10/21 | 2/10/21             | 2/10/21            | None                    | FALSE            | Day 2 of streak was missed, so streak resets  |
+        | 2/10/21 | 1                   | 2/10/21            | None                    | Day 2 of streak was missed, so streak resets  |
           No Accesses on 2/11/21
-        | 2/12/21 | 2/12/21             | 2/12/21            | None                    | FALSE            | Day 2 of streak was missed, so streak resets  |
+        | 2/12/21 | 1                   | 2/12/21            | None                    | Day 2 of streak was missed, so streak resets  |
         +---------+---------------------+--------------------+-------------------------+------------------+-----------------------------------------------+
         """
         now = datetime.datetime.now(UTC)
-        for i in range(0, STREAK_LENGTH_TO_CELEBRATE * 3, 2):
-            with mock.patch.object(UserCelebration, '_get_now') as get_now_mock:
-                get_now_mock.return_value = now + datetime.timedelta(days=i)
-                should_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
-                self.assertEqual(self.user.celebration.first_day_of_streak, (now + datetime.timedelta(days=i)).date())
-                self.assertEqual(should_celebrate, False)
+        for i in range(1, self.STREAK_LENGTH_TO_CELEBRATE * 3 + 1, 2):
+            with freeze_time(now + datetime.timedelta(days=i)):
+                streak_length_to_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
+                assert self.user.celebration.last_day_of_streak == (now + datetime.timedelta(days=i)).date()
+                assert streak_length_to_celebrate is None
+
+    # pylint: disable=line-too-long
+    def test_streak_does_not_reset_if_day_is_missed_with_longer_break(self):
+        """
+        Sample run for a 3 day streak with the learner coming back every other day.
+        See last column for explanation.
+        +---------+---------------------+--------------------+-------------------------+------------------+
+        | today   | streak_length       | last_day_of_streak | streak_length_to_celebrate | Note          |
+        +---------+---------------------+--------------------+-------------------------+------------------+
+        | 2/4/21  | 1                   | 2/4/21             | None                    | Day 1 of Streak  |
+          No Accesses on 2/5/21
+        | 2/6/21  | 2                   | 2/6/21             | None                    | Day 2 of Streak  |
+          No Accesses on 2/7/21
+        | 2/8/21  | 3                   | 2/8/21             | 3                       | Day 3 of streak  |
+          No Accesses on 2/9/21
+        | 2/10/21 | 4                   | 2/10/21            | None                    | Day 4 of streak  |
+          No Accesses on 2/11/21
+        | 2/12/21 | 5                   | 2/12/21            | None                    | Day 5 of streak  |
+        +---------+---------------------+--------------------+-------------------------+------------------+
+        """
+        UserCelebration.STREAK_BREAK_LENGTH = 2
+        now = datetime.datetime.now(UTC)
+        for i in range(1, self.STREAK_LENGTH_TO_CELEBRATE * 3 + 1, 2):
+            with freeze_time(now + datetime.timedelta(days=i)):
+                streak_length_to_celebrate = UserCelebration.perform_streak_updates(self.user, self.course_key)
+                assert bool(streak_length_to_celebrate) == (i == 5)
+
+    def test_streak_masquerade(self):
+        """ Don't update streak data when masquerading as a specific student """
+        # Update streak data when not masquerading
+        with mock.patch.object(UserCelebration, '_update_streak') as update_streak_mock:
+            for _ in range(1, self.STREAK_LENGTH_TO_CELEBRATE + 1):
+                UserCelebration.perform_streak_updates(self.user, self.course_key)
+                update_streak_mock.assert_called()
+
+        # Don't update streak data when masquerading as a specific student
+        with mock.patch('lms.djangoapps.courseware.masquerade.is_masquerading_as_specific_student', return_value=True):
+            with mock.patch.object(UserCelebration, '_update_streak') as update_streak_mock:
+                for _ in range(1, self.STREAK_LENGTH_TO_CELEBRATE + 1):
+                    UserCelebration.perform_streak_updates(self.user, self.course_key)
+                    update_streak_mock.assert_not_called()
 
 
 class PendingNameChangeTests(SharedModuleStoreTestCase):
