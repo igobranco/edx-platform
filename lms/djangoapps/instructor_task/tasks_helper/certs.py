@@ -156,10 +156,10 @@ def _invalidate_generated_certificates(course_id, enrolled_students, certificate
 
     # Mark generated certificates as 'unavailable' and update download_url, download_uui, verify_uuid and
     # grade with empty string for each row
-    certificates.update(
-        status=CertificateStatuses.unavailable,
-        verify_uuid='',
-        download_uuid='',
-        download_url='',
-        grade='',
-    )
+    for c in certificates:
+        c.status = CertificateStatuses.unavailable,
+        c.verify_uuid = '',
+        c.download_uuid = '',
+        c.download_url = '',
+        c.grade = '',
+        c.save()
