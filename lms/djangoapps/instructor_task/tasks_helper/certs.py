@@ -10,7 +10,11 @@ from django.db.models import Q
 from xmodule.modulestore.django import modulestore
 
 from common.djangoapps.student.models import CourseEnrollment
-from lms.djangoapps.certificates.api import generate_user_certificates
+from lms.djangoapps.certificates.api import (
+    generate_allowlist_certificate_task,
+    generate_user_certificates,
+    is_using_certificate_allowlist_and_is_on_allowlist
+)
 from lms.djangoapps.certificates.models import CertificateStatuses, GeneratedCertificate
 from .runner import TaskProgress
 User = get_user_model()
@@ -76,18 +80,21 @@ def generate_students_certificates(
     # Generate certificate for each student
     for student in students_require_certs:
         task_progress.attempted += 1
-        # TODO: here
-        status = generate_user_certificates(
-            student,
-            course_id,
-            course=course
-        )
-
-        #TODO: skip this because we already incremented attempted above
-        if CertificateStatuses.is_passing_status(status):
-            task_progress.succeeded += 1
+        if is_using_certificate_allowlist_and_is_on_allowlist(student, course_id):
+            log.info(f'{course_id} is using allowlist certificates, and the user {student.id} is on its allowlist. '
+                     f'Attempt will be made to generate an allowlist certificate.')
+            generate_allowlist_certificate_task(student, course_id)
         else:
-            task_progress.failed += 1
+            status = generate_user_certificates(
+                student,
+                course_id,
+                course=course
+            )
+
+            if CertificateStatuses.is_passing_status(status):
+                task_progress.succeeded += 1
+            else:
+                task_progress.failed += 1
 
     return task_progress.update_task_state(extra_meta=current_step)
 
@@ -136,6 +143,7 @@ def _invalidate_generated_certificates(course_id, enrolled_students, certificate
     :param enrolled_students: (queryset or list) students enrolled in the course
     :param certificate_statuses: certificates statuses for whom to remove generated certificate
     """
+    # TODO: here
     certificates = GeneratedCertificate.objects.filter(
         user__in=enrolled_students,
         course_id=course_id,
