@@ -3,6 +3,8 @@ Instructor tasks related to certificates.
 """
 
 
+import logging
+
 from time import time
 
 from django.contrib.auth import get_user_model
@@ -18,6 +20,8 @@ from lms.djangoapps.certificates.api import (
 from lms.djangoapps.certificates.models import CertificateStatuses, GeneratedCertificate
 from .runner import TaskProgress
 User = get_user_model()
+
+log = logging.getLogger(__name__)
 
 
 def generate_students_certificates(
