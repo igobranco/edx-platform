@@ -5,10 +5,10 @@ Tests of modulestore semantics: How do the interfaces methods of ModuleStore rel
 
 import itertools
 from collections import namedtuple
+from unittest.mock import patch
 
 import pytest
 import ddt
-from mock import patch
 from xblock.core import XBlock, XBlockAside
 from xblock.fields import Scope, String
 from xblock.runtime import DictKeyValueStore, KvsFieldData
@@ -59,7 +59,7 @@ class DirectOnlyCategorySemantics(PureModulestoreTestCase):
     ASIDE_DATA_FIELD = TestField('content', '<div>aside test data</div>', '<div>aside different test data</div>')
 
     def setUp(self):
-        super(DirectOnlyCategorySemantics, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = CourseFactory.create(
             org='test_org',
             number='999',
@@ -214,9 +214,9 @@ class DirectOnlyCategorySemantics(PureModulestoreTestCase):
         def verify_course_summery_fields(course_summary):
             """ Verify that every `course_summary` object has all the required fields """
             expected_fields = CourseSummary.course_info_fields + ['id', 'location', 'has_ended']
-            return all([hasattr(course_summary, field) for field in expected_fields])
+            return all(hasattr(course_summary, field) for field in expected_fields)
 
-        assert all((verify_course_summery_fields(course_summary) for course_summary in course_summaries))
+        assert all(verify_course_summery_fields(course_summary) for course_summary in course_summaries)
 
     def is_detached(self, block_type):
         """
@@ -236,7 +236,7 @@ class DirectOnlyCategorySemantics(PureModulestoreTestCase):
         field_data = KvsFieldData(key_store)
 
         aside = AsideTest(scope_ids=scope_ids, runtime=TestRuntime(services={'field-data': field_data}))
-        aside.fields[self.ASIDE_DATA_FIELD.field_name].write_to(aside, self.ASIDE_DATA_FIELD.initial)
+        aside.fields[self.ASIDE_DATA_FIELD.field_name].write_to(aside, self.ASIDE_DATA_FIELD.initial)  # pylint: disable=unsubscriptable-object
         return [aside]
 
     def _get_aside(self, block):
@@ -345,7 +345,7 @@ class DirectOnlyCategorySemantics(PureModulestoreTestCase):
             self.assertCourseSummaryFields(course_summaries)
 
             # Verify fetched accessible courses list is a list of CourseSummery instances
-            assert all((isinstance(course, CourseSummary) for course in course_summaries))
+            assert all(isinstance(course, CourseSummary) for course in course_summaries)
 
     @ddt.data(*itertools.product(['chapter', 'sequential'], [True, False]))
     @ddt.unpack

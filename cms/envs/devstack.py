@@ -44,9 +44,12 @@ EMAIL_FILE_PATH = '/edx/src/ace_messages/'
 ################################# LMS INTEGRATION #############################
 
 LMS_BASE = 'localhost:18000'
-LMS_ROOT_URL = 'http://{}'.format(LMS_BASE)
+LMS_ROOT_URL = f'http://{LMS_BASE}'
 FEATURES['PREVIEW_LMS_BASE'] = "preview." + LMS_BASE
 
+FRONTEND_LOGIN_URL = LMS_ROOT_URL + '/login'
+FRONTEND_LOGOUT_URL = LMS_ROOT_URL + '/logout'
+FRONTEND_REGISTER_URL = LMS_ROOT_URL + '/register'
 ########################### PIPELINE #################################
 
 # Skip packaging and optimization in development
@@ -164,10 +167,10 @@ REQUIRE_DEBUG = DEBUG
 
 ########################### OAUTH2 #################################
 JWT_AUTH.update({
-    'JWT_ISSUER': '{}/oauth2'.format(LMS_ROOT_URL),
+    'JWT_ISSUER': f'{LMS_ROOT_URL}/oauth2',
     'JWT_ISSUERS': [{
         'AUDIENCE': 'lms-key',
-        'ISSUER': '{}/oauth2'.format(LMS_ROOT_URL),
+        'ISSUER': f'{LMS_ROOT_URL}/oauth2',
         'SECRET_KEY': 'lms-secret',
     }],
     'JWT_SECRET_KEY': 'lms-secret',
@@ -244,7 +247,3 @@ FEATURES['ENABLE_PREREQUISITE_COURSES'] = True
 # Used in edx-proctoring for ID generation in lieu of SECRET_KEY - dummy value
 # (ref MST-637)
 PROCTORING_USER_OBFUSCATION_KEY = '85920908f28904ed733fe576320db18cabd7b6cd'
-
-
-# Don't tolerate deprecated edx-platform import usage in devstack.
-ERROR_ON_DEPRECATED_EDX_PLATFORM_IMPORTS = True

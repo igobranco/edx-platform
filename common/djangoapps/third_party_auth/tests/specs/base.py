@@ -6,9 +6,9 @@ Base integration test for provider implementations.
 import json
 import unittest
 from contextlib import contextmanager
-import pytest
+from unittest import mock
 
-import mock
+import pytest
 from django import test
 from django.conf import settings
 from django.contrib import auth
@@ -40,7 +40,7 @@ def create_account(request):
     return RegistrationView().post(request)
 
 
-class HelperMixin(object):
+class HelperMixin:
     """
     Contains helper methods for IntegrationTestMixin and IntegrationTest classes below.
     """
@@ -73,11 +73,11 @@ class HelperMixin(object):
         # Check that the correct provider was selected.
         self.assertContains(
             response,
-            u'"errorMessage": null'
+            '"errorMessage": null'
         )
         self.assertContains(
             response,
-            u'"currentProvider": "{}"'.format(self.provider.name),
+            f'"currentProvider": "{self.provider.name}"',
         )
         # Expect that each truthy value we've prepopulated the register form
         # with is actually present.
@@ -122,7 +122,7 @@ class HelperMixin(object):
         assert 302 == response.status_code
         assert 'canceled' in location
         assert self.backend_name in location
-        assert location.startswith((expected_uri + '?'))
+        assert location.startswith(expected_uri + '?')
 
     def assert_json_failure_response_is_inactive_account(self, response):
         """Asserts failure on /login for inactive account looks right."""
@@ -186,8 +186,9 @@ class HelperMixin(object):
         assert 302 == response.status_code
         # NOTE: Ideally we should use assertRedirects(), however it errors out due to the hostname, testserver,
         # not being properly set. This may be an issue with the call made by PSA, but we are not certain.
-        assert response.get('Location').endswith((expected_redirect_url or
-                                                  django_settings.SOCIAL_AUTH_LOGIN_REDIRECT_URL))
+        assert response.get('Location').endswith(
+            expected_redirect_url or django_settings.SOCIAL_AUTH_LOGIN_REDIRECT_URL
+        )
 
     def assert_redirect_to_login_looks_correct(self, response):
         """Asserts a response would redirect to /login."""
@@ -363,7 +364,7 @@ class IntegrationTestMixin(testutil.TestCase, test.TestCase, HelperMixin):
     USER_USERNAME = "override"
 
     def setUp(self):
-        super(IntegrationTestMixin, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.request_factory = test.RequestFactory()
         self.login_page_url = reverse('signin_user')
@@ -447,7 +448,7 @@ class IntegrationTestMixin(testutil.TestCase, test.TestCase, HelperMixin):
         # Now the user enters their username and password.
         # The AJAX on the page will log them in:
         ajax_login_response = self.client.post(
-            reverse('user_api_login_session'),
+            reverse('user_api_login_session', kwargs={'api_version': 'v1'}),
             {'email': self.user.email, 'password': 'test'}
         )
         assert ajax_login_response.status_code == 200
@@ -533,7 +534,7 @@ class IntegrationTest(testutil.TestCase, test.TestCase, HelperMixin):
     """Abstract base class for provider integration tests."""
 
     def setUp(self):
-        super(IntegrationTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.request_factory = test.RequestFactory()
 
     # Actual tests, executed once per child.
@@ -788,6 +789,27 @@ class IntegrationTest(testutil.TestCase, test.TestCase, HelperMixin):
         post_request = self._get_login_post_request(strategy)
         self.assert_json_failure_response_is_missing_social_auth(login_user(post_request))
 
+    @django_utils.override_settings(ENABLE_REQUIRE_THIRD_PARTY_AUTH=True)
+    def test_signin_associates_user_if_oauth_provider_and_tpa_is_required(self):
+        """
+        Tests associate user by email with oauth provider and `ENABLE_REQUIRE_THIRD_PARTY_AUTH` enabled
+        """
+        username, email, password = self.get_username(), 'user@example.com', 'password'
+
+        _, strategy = self.get_request_and_strategy(
+            auth_entry=pipeline.AUTH_ENTRY_LOGIN, redirect_uri='social:complete')
+
+        user = self.create_user_models_for_existing_account(strategy, email, password, username, skip_social_auth=True)
+
+        with mock.patch(
+            'common.djangoapps.third_party_auth.pipeline.get_associated_user_by_email_response',
+            return_value=[{'user': user}, True],
+        ):
+            strategy.request.backend.auth_complete = mock.MagicMock(return_value=self.fake_auth_complete(strategy))
+
+            post_request = self._get_login_post_request(strategy)
+            self.assert_json_success_response_looks_correct(login_user(post_request), verify_redirect_url=True)
+
     def test_first_party_auth_trumps_third_party_auth_but_is_invalid_when_only_email_in_request(self):
         self.assert_first_party_auth_trumps_third_party_auth(email='user@example.com')
 
@@ -796,11 +818,11 @@ class IntegrationTest(testutil.TestCase, test.TestCase, HelperMixin):
 
     def test_first_party_auth_trumps_third_party_auth_and_fails_when_credentials_bad(self):
         self.assert_first_party_auth_trumps_third_party_auth(
-            email='user@example.com', password=u'password', success=False)
+            email='user@example.com', password='password', success=False)
 
     def test_first_party_auth_trumps_third_party_auth_and_succeeds_when_credentials_good(self):
         self.assert_first_party_auth_trumps_third_party_auth(
-            email='user@example.com', password=u'password', success=True)
+            email='user@example.com', password='password', success=True)
 
     def test_pipeline_redirects_to_requested_url(self):
         requested_redirect_url = 'foo'  # something different from '/dashboard'

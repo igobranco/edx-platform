@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Test the access control framework
 """
@@ -7,29 +6,22 @@ Test the access control framework
 import datetime
 import itertools
 
+from unittest.mock import Mock, patch
 import pytest
 import ddt
 import pytz
-import six
 from ccx_keys.locator import CCXLocator
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.test import TestCase
 from django.test.client import RequestFactory
+from django.test.utils import override_settings
 from django.urls import reverse
 from milestones.tests.utils import MilestonesTestCaseMixin
-from mock import Mock, patch
 from opaque_keys.edx.locator import CourseLocator
 
 import lms.djangoapps.courseware.access as access
 import lms.djangoapps.courseware.access_response as access_response
 from lms.djangoapps.courseware.masquerade import CourseMasquerade
-from lms.djangoapps.courseware.tests.factories import (
-    BetaTesterFactory,
-    GlobalStaffFactory,
-    InstructorFactory,
-    StaffFactory,
-    UserFactory
-)
 from lms.djangoapps.courseware.tests.helpers import LoginEnrollmentTestCase, masquerade_as_group_member
 from lms.djangoapps.ccx.models import CustomCourseForEdX
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
@@ -43,6 +35,11 @@ from common.djangoapps.student.tests.factories import (
     CourseEnrollmentAllowedFactory,
     CourseEnrollmentFactory
 )
+from common.djangoapps.student.tests.factories import BetaTesterFactory
+from common.djangoapps.student.tests.factories import GlobalStaffFactory
+from common.djangoapps.student.tests.factories import InstructorFactory
+from common.djangoapps.student.tests.factories import StaffFactory
+from common.djangoapps.student.tests.factories import UserFactory
 from common.djangoapps.util.milestones_helpers import fulfill_course_milestone, set_prerequisite_courses
 from xmodule.course_module import (
     CATALOG_VISIBILITY_ABOUT,
@@ -75,14 +72,14 @@ class CoachAccessTestCaseCCX(SharedModuleStoreTestCase, LoginEnrollmentTestCase)
         """
         Set up course for tests
         """
-        super(CoachAccessTestCaseCCX, cls).setUpClass()
+        super().setUpClass()
         cls.course = CourseFactory.create()
 
     def setUp(self):
         """
         Set up tests
         """
-        super(CoachAccessTestCaseCCX, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         # Create ccx coach account
         self.coach = AdminFactory.create(password="test")
@@ -104,7 +101,7 @@ class CoachAccessTestCaseCCX(SharedModuleStoreTestCase, LoginEnrollmentTestCase)
         )
         ccx.save()
 
-        ccx_locator = CCXLocator.from_course_locator(self.course.id, six.text_type(ccx.id))
+        ccx_locator = CCXLocator.from_course_locator(self.course.id, str(ccx.id))
         role = CourseCcxCoachRole(ccx_locator)
         role.add_users(self.coach)
         CourseEnrollment.enroll(self.coach, ccx_locator)
@@ -151,12 +148,12 @@ class CoachAccessTestCaseCCX(SharedModuleStoreTestCase, LoginEnrollmentTestCase)
         CourseEnrollment.enroll(student, ccx_locator)
 
         # Test for access of a coach
-        resp = self.client.get(reverse('student_progress', args=[six.text_type(ccx_locator), student.id]))
+        resp = self.client.get(reverse('student_progress', args=[str(ccx_locator), student.id]))
         assert resp.status_code == 200
 
         # Assert access of a student
         self.client.login(username=student.username, password='test')
-        resp = self.client.get(reverse('student_progress', args=[six.text_type(ccx_locator), self.coach.id]))
+        resp = self.client.get(reverse('student_progress', args=[str(ccx_locator), self.coach.id]))
         assert resp.status_code == 404
 
 
@@ -175,7 +172,7 @@ class AccessTestCase(LoginEnrollmentTestCase, ModuleStoreTestCase, MilestonesTes
     }
 
     def setUp(self):
-        super(AccessTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = CourseFactory.create(org='edX', course='toy', run='test_run')
         self.anonymous_user = AnonymousUserFactory()
         self.beta_user = BetaTesterFactory(course_key=self.course.id)
@@ -502,6 +499,48 @@ class AccessTestCase(LoginEnrollmentTestCase, ModuleStoreTestCase, MilestonesTes
         )
         assert not access._has_access_course(user, 'enroll', course)
 
+    @override_settings(COURSES_INVITE_ONLY=False)
+    def test__course_default_invite_only_flag_false(self):
+        """
+        Ensure that COURSES_INVITE_ONLY does not take precedence,
+        if it is not set over the course invitation_only settings.
+        """
+
+        user = UserFactory.create()
+
+        # User cannot enroll in the course if it is just invitation only.
+        course = self._mock_course_with_invitation(invitation=True)
+        self.assertFalse(access._has_access_course(user, 'enroll', course))
+
+        # User can enroll in the course if it is not just invitation only.
+        course = self._mock_course_with_invitation(invitation=False)
+        self.assertTrue(access._has_access_course(user, 'enroll', course))
+
+    @override_settings(COURSES_INVITE_ONLY=True)
+    def test__course_default_invite_only_flag_true(self):
+        """
+        Ensure that COURSES_INVITE_ONLY takes precedence over the course invitation_only settings.
+        """
+
+        user = UserFactory.create()
+
+        # User cannot enroll in the course if it is just invitation only and COURSES_INVITE_ONLY is also set.
+        course = self._mock_course_with_invitation(invitation=True)
+        self.assertFalse(access._has_access_course(user, 'enroll', course))
+
+        # User cannot enroll in the course if COURSES_INVITE_ONLY is set despite of the course invitation_only value.
+        course = self._mock_course_with_invitation(invitation=False)
+        self.assertFalse(access._has_access_course(user, 'enroll', course))
+
+    def _mock_course_with_invitation(self, invitation):
+        yesterday = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=1)
+        tomorrow = datetime.datetime.now(pytz.utc) + datetime.timedelta(days=1)
+        return Mock(
+            enrollment_start=yesterday, enrollment_end=tomorrow,
+            id=CourseLocator('edX', 'test', '2012_Fall'), enrollment_domain='',
+            invitation_only=invitation
+        )
+
     def test__user_passed_as_none(self):
         """Ensure has_access handles a user being passed as null"""
         access.has_access(None, 'staff', 'global', None)
@@ -554,7 +593,7 @@ class AccessTestCase(LoginEnrollmentTestCase, ModuleStoreTestCase, MilestonesTes
             org='test_org', number='788', run='test_run'
         )
 
-        pre_requisite_courses = [six.text_type(pre_requisite_course.id)]
+        pre_requisite_courses = [str(pre_requisite_course.id)]
         course = CourseFactory.create(
             org='test_org', number='786', run='test_run', pre_requisite_courses=pre_requisite_courses
         )
@@ -600,7 +639,7 @@ class AccessTestCase(LoginEnrollmentTestCase, ModuleStoreTestCase, MilestonesTes
             run='test_run',
         )
 
-        pre_requisite_courses = [six.text_type(pre_requisite_course.id)]
+        pre_requisite_courses = [str(pre_requisite_course.id)]
         course = CourseFactory.create(
             org='edX',
             course='1000',
@@ -616,7 +655,7 @@ class AccessTestCase(LoginEnrollmentTestCase, ModuleStoreTestCase, MilestonesTes
         self.login(user.email, test_password)
         CourseEnrollmentFactory(user=user, course_id=course.id)
 
-        url = reverse('courseware', args=[six.text_type(course.id)])
+        url = reverse('courseware', args=[str(course.id)])
         response = self.client.get(url)
         self.assertRedirects(
             response,
@@ -637,7 +676,7 @@ class UserRoleTestCase(TestCase):
     """
 
     def setUp(self):
-        super(UserRoleTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course_key = CourseLocator('edX', 'toy', '2012_Fall')
         self.anonymous_user = AnonymousUserFactory()
         self.student = UserFactory()
@@ -675,12 +714,12 @@ class UserRoleTestCase(TestCase):
 @ddt.ddt
 class CourseOverviewAccessTestCase(ModuleStoreTestCase):
     """
-    Tests confirming that has_access works equally on CourseDescriptors and
+    Tests confirming that has_access works equally on CourseBlocks and
     CourseOverviews.
     """
 
     def setUp(self):
-        super(CourseOverviewAccessTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         today = datetime.datetime.now(pytz.UTC)
         last_week = today - datetime.timedelta(days=7)
@@ -739,7 +778,7 @@ class CourseOverviewAccessTestCase(ModuleStoreTestCase):
                 User to test with.
             action (str): action to test with.
             course_attr_name (str): the name of the attribute on self that is
-                the CourseDescriptor to test with.
+                the CourseBlock to test with.
         """
         user = getattr(self, user_attr_name)
         course = getattr(self, course_attr_name)

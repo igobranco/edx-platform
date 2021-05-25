@@ -4,84 +4,22 @@ is responsible for holding course outline data. Studio _pushes_ that data into
 learning_sequences at publish time.
 """
 from datetime import timezone
+from typing import List, Tuple
 
 from edx_django_utils.monitoring import function_trace, set_custom_attribute
 
 from openedx.core.djangoapps.content.learning_sequences.api import replace_course_outline
 from openedx.core.djangoapps.content.learning_sequences.data import (
+    ContentErrorData,
     CourseLearningSequenceData,
     CourseOutlineData,
     CourseSectionData,
     CourseVisibility,
     ExamData,
-    VisibilityData,
+    VisibilityData
 )
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
-
-
-class CourseStructureError(Exception):
-    """
-    Raise this if we can't create an outline because of the course structure.
-
-    Courses built in Studio conform to a hierarchy that looks like:
-        Course -> Section (a.k.a. Chapter) -> Subsection (a.k.a. Sequence)
-
-    OLX imports are much more freeform and can generate unusual structures that
-    we won't know how to handle.
-    """
-
-
-def _check_sequence_fields(sequence):
-    """
-    Raise CourseStructureError if `sequence` is missing a required field.
-
-    Do this instead of checking against specific block types to better future
-    proof ourselves against new sequence-types, aliases, changes in the way
-    dynamic mixing of XBlock types happens, as well as deprecation/removal of
-    the specific fields we care about. If it quacks like a duck...
-    """
-    expected_fields = [
-        'display_name',
-        'hide_after_due',
-        'hide_from_toc',
-        'is_practice_exam',
-        'is_proctored_enabled',
-        'is_time_limited',
-        'visible_to_staff_only',
-    ]
-    for field in expected_fields:
-        if not hasattr(sequence, field):
-            msg = (
-                f"Cannot create CourseOutline: Expected a Sequence at "
-                f"{sequence.location} (child of {sequence.parent}), "
-                f"but this object does not have sequence field {field}."
-            )
-            raise CourseStructureError(msg)
-
-
-def _check_section_fields(section):
-    """
-    Raise CourseStructureError if `section` is missing a required field.
-
-    Do this instead of checking against specific block types to better future
-    proof ourselves against new sequence-types, aliases, changes in the way
-    dynamic mixing of XBlock types happens, as well as deprecation/removal of
-    the specific fields we care about. If it quacks like a duck...
-    """
-    expected_fields = [
-        'children',
-        'hide_from_toc',
-        'visible_to_staff_only',
-    ]
-    for field in expected_fields:
-        if not hasattr(section, field):
-            msg = (
-                f"Cannot create CourseOutline: Expected a Section at "
-                f"{section.location} (child of {section.parent}), "
-                f"but this object does not have Section field {field}."
-            )
-            raise CourseStructureError(msg)
 
 
 def _remove_version_info(usage_key):
@@ -105,25 +43,225 @@ def _remove_version_info(usage_key):
     return usage_key.map_into_course(unversioned_course_key)
 
 
+def _error_for_not_section(not_section):
+    """
+    ContentErrorData when we run into a child of <course> that's not a Section.
+
+    Has to be phrased in a way that makes sense to course teams.
+    """
+    return ContentErrorData(
+        message=(
+            f'<course> contains a <{not_section.location.block_type}> tag with '
+            f'url_name="{not_section.location.block_id}" and '
+            f'display_name="{getattr(not_section, "display_name", "")}". '
+            f'Expected <chapter> tag instead.'
+        ),
+        usage_key=_remove_version_info(not_section.location),
+    )
+
+
+def _error_for_not_sequence(section, not_sequence):
+    """
+    ContentErrorData when we run into a child of Section that's not a Sequence.
+
+    Has to be phrased in a way that makes sense to course teams.
+    """
+    return ContentErrorData(
+        message=(
+            f'<chapter> with url_name="{section.location.block_id}" and '
+            f'display_name="{section.display_name}" contains a '
+            f'<{not_sequence.location.block_type}> tag with '
+            f'url_name="{not_sequence.location.block_id}" and '
+            f'display_name="{getattr(not_sequence, "display_name", "")}". '
+            f'Expected a <sequential> tag instead.'
+        ),
+        usage_key=_remove_version_info(not_sequence.location),
+    )
+
+
+def _bubbled_up_groups_from_units(group_access_from_units):
+    """
+    Return {user_partition_id: [group_ids]} to bubble up from Units to Sequence.
+
+    This is to handle a special case: If *all* of the Units in a sequence have
+    the exact same group for a given user partition, bubble that value up to the
+    Sequence as a whole. For example, say that every Unit in a Sequence has a
+    group_access that looks like: { ENROLLMENT: [MASTERS] } (where both
+    constants are ints). In this case, an Audit user has nothing to see in the
+    Sequence at all, and it's not useful to give them an empty shell. So we'll
+    act as if the Sequence as a whole had that group setting. Note that there is
+    currently no way to set the group_access setting at the sequence level in
+    Studio, so course teams can only manipulate it for individual Units.
+    """
+    # If there are no Units, there's nothing to bubble up.
+    if not group_access_from_units:
+        return {}
+
+    def _normalize_group_access_dict(group_access):
+        return {
+            user_partition_id: sorted(group_ids)  # sorted for easier comparison
+            for user_partition_id, group_ids in group_access.items()
+            if group_ids  # Ignore empty groups
+        }
+
+    normalized_group_access_dicts = [
+        _normalize_group_access_dict(group_access) for group_access in group_access_from_units
+    ]
+    first_unit_group_access = normalized_group_access_dicts[0]
+    rest_of_seq_group_access_list = normalized_group_access_dicts[1:]
+
+    # If there's only a single Unit, bubble up its group_access.
+    if not rest_of_seq_group_access_list:
+        return first_unit_group_access
+
+    # Otherwise, go through the user partitions and groups in our first unit
+    # and compare them to all the other group_access dicts from the units in the
+    # rest of the sequence. Only keep the ones that match exactly and do not
+    # have empty groups.
+    common_group_access = {
+        user_partition_id: group_ids
+        for user_partition_id, group_ids in first_unit_group_access.items()
+        if group_ids and all(
+            group_ids == group_access.get(user_partition_id)
+            for group_access in rest_of_seq_group_access_list
+        )
+    }
+    return common_group_access
+
+
+def _make_user_partition_groups(usage_key, group_access):
+    """
+    Return a (Dict, Optional[ContentErrorData]) of user partition groups.
+
+    The Dict is a mapping of user partition ID to list of group IDs. If any
+    empty groups are encountered, we create a ContentErrorData about that. If
+    there are no empty groups, we pass back (Dict, None).
+    """
+    empty_partitions = sorted(
+        part_id for part_id, group_ids in group_access.items() if not group_ids
+    )
+    empty_partitions_txt = ", ".join([str(part_id) for part_id in empty_partitions])
+    if empty_partitions:
+        error = ContentErrorData(
+            message=(
+                f'<{usage_key.block_type}> with url_name="{usage_key.block_id}"'
+                f' has the following empty group_access user partitions: '
+                f'{empty_partitions_txt}. This would make this content '
+                f'unavailable to anyone except course staff. Ignoring these '
+                f'group_access settings when building outline.'
+            ),
+            usage_key=_remove_version_info(usage_key),
+        )
+    else:
+        error = None
+
+    user_partition_groups = {
+        part_id: group_ids for part_id, group_ids in group_access.items() if group_ids
+    }
+    return user_partition_groups, error
+
+
+def _make_bubbled_up_error(seq_usage_key, user_partition_id, group_ids):
+    return ContentErrorData(
+        message=(
+            f'<{seq_usage_key.block_type}> with url_name="{seq_usage_key.block_id}"'
+            f' was assigned group_ids {group_ids} for user_partition_id '
+            f'{user_partition_id} because all of its child Units had that '
+            f'group_access setting. This is permitted, but is an unusual usage '
+            f'that may cause unexpected behavior while browsing the course.'
+        ),
+        usage_key=_remove_version_info(seq_usage_key),
+    )
+
+
+def _make_not_bubbled_up_error(seq_usage_key, seq_group_access, user_partition_id, group_ids):
+    return ContentErrorData(
+        message=(
+            f'<{seq_usage_key.block_type}> with url_name="{seq_usage_key.block_id}" '
+            f'has children with only group_ids {group_ids} for user_partition_id '
+            f'{user_partition_id}, but its own group_access setting is '
+            f'{seq_group_access}, which takes precedence. This is permitted, '
+            f'but probably not intended, since it means that the content is '
+            f'effectively unusable by anyone except staff.'
+        ),
+        usage_key=_remove_version_info(seq_usage_key),
+    )
+
+
 def _make_section_data(section):
     """
-    Generate a CourseSectionData from a SectionDescriptor.
+    Return a (CourseSectionData, List[ContentDataError]) from a SectionBlock.
+
+    Can return None for CourseSectionData if it's not really a SectionBlock that
+    was passed in.
 
     This method does a lot of the work to convert modulestore fields to an input
-    that the learning_sequences app expects. It doesn't check for specific
-    classes (i.e. you could create your own Sequence-like XBlock), but it will
-    raise a CourseStructureError if anything you pass in is missing fields that
-    we expect in a SectionDescriptor or its SequenceDescriptor children.
-    """
-    _check_section_fields(section)
+    that the learning_sequences app expects. OLX import permits structures that
+    are much less constrained than Studio's UI allows for, so whenever we run
+    into something that does not meet our Course -> Section -> Subsection
+    hierarchy expectations, we add a support-team-readable error message to our
+    list of ContentDataErrors to pass back.
 
+    At this point in the code, everything has already been deserialized into
+    SectionBlocks and SequenceBlocks, but we're going to phrase our messages in
+    ways that would make sense to someone looking at the import OLX, since that
+    is the layer that the course teams and support teams are working with.
+    """
+    section_errors = []
+
+    # First check if it's not a section at all, and short circuit if it isn't.
+    if section.location.block_type != 'chapter':
+        section_errors.append(_error_for_not_section(section))
+        return (None, section_errors)
+
+    section_user_partition_groups, error = _make_user_partition_groups(
+        section.location, section.group_access
+    )
+    # Invalid user partition errors aren't fatal. Just log and continue on.
+    if error:
+        section_errors.append(error)
+
+    # We haven't officially killed off problemset and videosequence yet, so
+    # treat them as equivalent to sequential for now.
+    valid_sequence_tags = ['sequential', 'problemset', 'videosequence']
     sequences_data = []
+
     for sequence in section.get_children():
-        _check_sequence_fields(sequence)
+        if sequence.location.block_type not in valid_sequence_tags:
+            section_errors.append(_error_for_not_sequence(section, sequence))
+            continue
+
+        seq_user_partition_groups, error = _make_user_partition_groups(
+            sequence.location, sequence.group_access
+        )
+        if error:
+            section_errors.append(error)
+
+        # Bubble up User Partition Group settings from Units if appropriate.
+        sequence_upg_from_units = _bubbled_up_groups_from_units(
+            [unit.group_access for unit in sequence.get_children()]
+        )
+        for user_partition_id, group_ids in sequence_upg_from_units.items():
+            # If there's an existing user partition ID set at the sequence
+            # level, we respect it, even if it seems nonsensical. The hack of
+            # bubbling things up from the Unit level is only done if there's
+            # no conflicting value set at the Sequence level.
+            if user_partition_id not in seq_user_partition_groups:
+                section_errors.append(
+                    _make_bubbled_up_error(sequence.location, user_partition_id, group_ids)
+                )
+                seq_user_partition_groups[user_partition_id] = group_ids
+            else:
+                section_errors.append(
+                    _make_not_bubbled_up_error(
+                        sequence.location, sequence.group_access, user_partition_id, group_ids
+                    )
+                )
+
         sequences_data.append(
             CourseLearningSequenceData(
                 usage_key=_remove_version_info(sequence.location),
-                title=sequence.display_name,
+                title=sequence.display_name_with_default,
                 inaccessible_after_due=sequence.hide_after_due,
                 exam=ExamData(
                     is_practice_exam=sequence.is_practice_exam,
@@ -134,38 +272,49 @@ def _make_section_data(section):
                     hide_from_toc=sequence.hide_from_toc,
                     visible_to_staff_only=sequence.visible_to_staff_only,
                 ),
+                user_partition_groups=seq_user_partition_groups,
             )
         )
 
     section_data = CourseSectionData(
         usage_key=_remove_version_info(section.location),
-        title=section.display_name,
+        title=section.display_name_with_default,
         sequences=sequences_data,
         visibility=VisibilityData(
             hide_from_toc=section.hide_from_toc,
             visible_to_staff_only=section.visible_to_staff_only,
         ),
+        user_partition_groups=section_user_partition_groups,
     )
-    return section_data
+    return section_data, section_errors
 
 
 @function_trace('get_outline_from_modulestore')
-def get_outline_from_modulestore(course_key):
+def get_outline_from_modulestore(course_key) -> Tuple[CourseOutlineData, List[ContentErrorData]]:
     """
-    Get a learning_sequence.data.CourseOutlineData for a param:course_key
+    Return a CourseOutlineData and list of ContentErrorData for param:course_key
+
+    This function does not write any data as a side-effect. It generates a
+    CourseOutlineData by inspecting the contents in the modulestore, but does
+    not push that data anywhere. This function only operates on the published
+    branch, and will not work on Old Mongo courses.
     """
     store = modulestore()
+    content_errors = []
 
     with store.branch_setting(ModuleStoreEnum.Branch.published_only, course_key):
-        course = store.get_course(course_key, depth=2)
+        # Pull course with depth=3 so we prefetch Section -> Sequence -> Unit
+        course = store.get_course(course_key, depth=3)
         sections_data = []
         for section in course.get_children():
-            section_data = _make_section_data(section)
-            sections_data.append(section_data)
+            section_data, section_errors = _make_section_data(section)
+            if section_data:
+                sections_data.append(section_data)
+            content_errors.extend(section_errors)
 
         course_outline_data = CourseOutlineData(
             course_key=course_key,
-            title=course.display_name,
+            title=course.display_name_with_default,
 
             # subtree_edited_on has a tzinfo of bson.tz_util.FixedOffset (which
             # maps to UTC), but for consistency, we're going to use the standard
@@ -183,7 +332,8 @@ def get_outline_from_modulestore(course_key):
             self_paced=course.self_paced,
             course_visibility=CourseVisibility(course.course_visibility),
         )
-    return course_outline_data
+
+    return (course_outline_data, content_errors)
 
 
 def update_outline_from_modulestore(course_key):
@@ -196,6 +346,8 @@ def update_outline_from_modulestore(course_key):
     # New Relic for easier trace debugging.
     set_custom_attribute('course_id', str(course_key))
 
-    course_outline_data = get_outline_from_modulestore(course_key)
+    course_outline_data, content_errors = get_outline_from_modulestore(course_key)
     set_custom_attribute('num_sequences', len(course_outline_data.sequences))
-    replace_course_outline(course_outline_data)
+    set_custom_attribute('num_content_errors', len(content_errors))
+
+    replace_course_outline(course_outline_data, content_errors=content_errors)

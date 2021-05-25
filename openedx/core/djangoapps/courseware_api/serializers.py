@@ -14,7 +14,7 @@ class _MediaSerializer(serializers.Serializer):  # pylint: disable=abstract-meth
     """
 
     def __init__(self, uri_attribute, *args, **kwargs):
-        super(_MediaSerializer, self).__init__(*args, **kwargs)  # lint-amnesty, pylint: disable=super-with-arguments
+        super().__init__(*args, **kwargs)
         self.uri_attribute = uri_attribute
 
     uri = serializers.SerializerMethodField(source='*')
@@ -104,6 +104,7 @@ class CourseInfoSerializer(serializers.Serializer):  # pylint: disable=abstract-
     verified_mode = serializers.DictField()
     show_calculator = serializers.BooleanField()
     original_user_is_staff = serializers.BooleanField()
+    can_view_legacy_courseware = serializers.BooleanField()
     is_staff = serializers.BooleanField()
     can_load_courseware = serializers.DictField()
     notes = serializers.DictField()
@@ -115,6 +116,8 @@ class CourseInfoSerializer(serializers.Serializer):  # pylint: disable=abstract-
     verify_identity_url = AbsoluteURLField()
     verification_status = serializers.CharField()
     linkedin_add_to_profile_url = serializers.URLField()
+    is_mfe_special_exams_enabled = serializers.BooleanField()
+    user_needs_integrity_signature = serializers.BooleanField()
 
     def __init__(self, *args, **kwargs):
         """

@@ -4,10 +4,11 @@ Tests for users API
 
 
 import datetime
+from unittest.mock import patch
+from urllib.parse import parse_qs
 
 import ddt
 import pytz
-import six
 from completion.test_utils import CompletionWaffleTestMixin, submit_completions_for_testing
 from django.conf import settings
 from django.template import defaultfilters
@@ -15,15 +16,16 @@ from django.test import RequestFactory, override_settings
 from django.utils import timezone
 from django.utils.timezone import now
 from milestones.tests.utils import MilestonesTestCaseMixin
-from mock import patch
-from six.moves import range
-from six.moves.urllib.parse import parse_qs
 
 from common.djangoapps.course_modes.models import CourseMode
-from lms.djangoapps.courseware.access_response import MilestoneAccessError, StartDateError, VisibilityError
+from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.tests.factories import CourseEnrollmentFactory
+from common.djangoapps.util.milestones_helpers import set_prerequisite_courses
+from common.djangoapps.util.testing import UrlResetMixin
 from lms.djangoapps.certificates.api import generate_user_certificates
 from lms.djangoapps.certificates.models import CertificateStatuses
 from lms.djangoapps.certificates.tests.factories import GeneratedCertificateFactory
+from lms.djangoapps.courseware.access_response import MilestoneAccessError, StartDateError, VisibilityError
 from lms.djangoapps.grades.tests.utils import mock_passing_grade
 from lms.djangoapps.mobile_api.testutils import (
     MobileAPITestCase,
@@ -32,14 +34,9 @@ from lms.djangoapps.mobile_api.testutils import (
     MobileCourseAccessTestMixin
 )
 from lms.djangoapps.mobile_api.utils import API_V1, API_V05
-from openedx.core.djangoapps.schedules.tests.factories import ScheduleFactory
 from openedx.core.lib.courses import course_image_url
 from openedx.features.course_duration_limits.models import CourseDurationLimitConfig
 from openedx.features.course_experience.tests.views.helpers import add_course_mode
-from common.djangoapps.student.models import CourseEnrollment
-from common.djangoapps.student.tests.factories import CourseEnrollmentFactory
-from common.djangoapps.util.milestones_helpers import set_prerequisite_courses
-from common.djangoapps.util.testing import UrlResetMixin
 from xmodule.course_module import DEFAULT_START_DATE
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 
@@ -118,21 +115,21 @@ class TestUserEnrollmentApi(UrlResetMixin, MobileAPITestCase, MobileAuthUserTest
 
     @patch.dict(settings.FEATURES, {"ENABLE_DISCUSSION_SERVICE": True})
     def setUp(self):
-        super(TestUserEnrollmentApi, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
     def verify_success(self, response):
         """
         Verifies user course enrollment response for success
         """
-        super(TestUserEnrollmentApi, self).verify_success(response)  # lint-amnesty, pylint: disable=super-with-arguments
+        super().verify_success(response)
         courses = response.data
         assert len(courses) == 1
 
         found_course = courses[0]['course']
-        assert 'courses/{}/about'.format(self.course.id) in found_course['course_about']
-        assert 'course_info/{}/updates'.format(self.course.id) in found_course['course_updates']
-        assert 'course_info/{}/handouts'.format(self.course.id) in found_course['course_handouts']
-        assert found_course['id'] == six.text_type(self.course.id)
+        assert f'courses/{self.course.id}/about' in found_course['course_about']
+        assert f'course_info/{self.course.id}/updates' in found_course['course_updates']
+        assert f'course_info/{self.course.id}/handouts' in found_course['course_handouts']
+        assert found_course['id'] == str(self.course.id)
         assert courses[0]['mode'] == CourseMode.DEFAULT_MODE_SLUG
         assert courses[0]['course']['subscription_id'] == self.course.clean_id(padding_char='_')
 
@@ -161,7 +158,7 @@ class TestUserEnrollmentApi(UrlResetMixin, MobileAPITestCase, MobileAuthUserTest
         response = self.api_response(api_version=api_version)
         for course_index in range(num_courses):
             assert response.data[course_index]['course']['id'] ==\
-                   six.text_type(courses[((num_courses - course_index) - 1)].id)
+                   str(courses[((num_courses - course_index) - 1)].id)
 
     @ddt.data(API_V05, API_V1)
     @patch.dict(settings.FEATURES, {
@@ -174,7 +171,7 @@ class TestUserEnrollmentApi(UrlResetMixin, MobileAPITestCase, MobileAuthUserTest
 
         course_with_prereq = CourseFactory.create(start=self.LAST_WEEK, mobile_available=True)
         prerequisite_course = CourseFactory.create()
-        set_prerequisite_courses(course_with_prereq.id, [six.text_type(prerequisite_course.id)])
+        set_prerequisite_courses(course_with_prereq.id, [str(prerequisite_course.id)])
 
         # Create list of courses with various expected courseware_access responses and corresponding expected codes
         courses = [
@@ -240,7 +237,7 @@ class TestUserEnrollmentApi(UrlResetMixin, MobileAPITestCase, MobileAuthUserTest
 
         response = self.api_response(api_version=api_version)
         response_discussion_url = response.data[0]['course']['discussion_url']
-        assert '/api/discussion/v1/courses/{}'.format(self.course.id) in response_discussion_url
+        assert f'/api/discussion/v1/courses/{self.course.id}' in response_discussion_url
 
     @ddt.data(API_V05, API_V1)
     def test_org_query(self, api_version):
@@ -281,10 +278,6 @@ class TestUserEnrollmentApi(UrlResetMixin, MobileAPITestCase, MobileAuthUserTest
             )
             enrollment.created = self.THREE_YEARS_AGO + datetime.timedelta(days=1)
             enrollment.save()
-
-            ScheduleFactory(
-                enrollment=enrollment
-            )
         else:
             course = CourseFactory.create(start=self.LAST_WEEK, mobile_available=True)
             self.enroll(course.id)
@@ -423,7 +416,7 @@ class CourseStatusAPITestCase(MobileAPITestCase):
         """
         Creates a basic course structure for our course
         """
-        super(CourseStatusAPITestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.section = ItemFactory.create(
             parent=self.course,
@@ -456,8 +449,8 @@ class TestCourseStatusGET(CourseStatusAPITestCase, MobileAuthUserTestMixin,
         self.login_and_enroll()
 
         response = self.api_response(api_version=API_V05)
-        assert response.data['last_visited_module_id'] == six.text_type(self.sub_section.location)
-        assert response.data['last_visited_module_path'] == [six.text_type(module.location) for module in
+        assert response.data['last_visited_module_id'] == str(self.sub_section.location)
+        assert response.data['last_visited_module_path'] == [str(module.location) for module in
                                                              [self.sub_section, self.section, self.course]]
 
     def test_success_v1(self):
@@ -465,7 +458,7 @@ class TestCourseStatusGET(CourseStatusAPITestCase, MobileAuthUserTestMixin,
         self.login_and_enroll()
         submit_completions_for_testing(self.user, [self.unit.location])
         response = self.api_response(api_version=API_V1)
-        assert response.data['last_visited_block_id'] == six.text_type(self.unit.location)
+        assert response.data['last_visited_block_id'] == str(self.unit.location)
 
 
 class TestCourseStatusPATCH(CourseStatusAPITestCase, MobileAuthUserTestMixin,
@@ -479,8 +472,8 @@ class TestCourseStatusPATCH(CourseStatusAPITestCase, MobileAuthUserTestMixin,
 
     def test_success(self):
         self.login_and_enroll()
-        response = self.api_response(data={"last_visited_module_id": six.text_type(self.other_unit.location)})
-        assert response.data['last_visited_module_id'] == six.text_type(self.other_sub_section.location)
+        response = self.api_response(data={"last_visited_module_id": str(self.other_unit.location)})
+        assert response.data['last_visited_module_id'] == str(self.other_sub_section.location)
 
     def test_invalid_module(self):
         self.login_and_enroll()
@@ -498,7 +491,7 @@ class TestCourseStatusPATCH(CourseStatusAPITestCase, MobileAuthUserTestMixin,
         past_date = datetime.datetime.now()
         response = self.api_response(
             data={
-                "last_visited_module_id": six.text_type(self.other_unit.location),
+                "last_visited_module_id": str(self.other_unit.location),
                 "modification_date": past_date.isoformat()
             },
             expected_response_code=400
@@ -513,16 +506,16 @@ class TestCourseStatusPATCH(CourseStatusAPITestCase, MobileAuthUserTestMixin,
         self.login_and_enroll()
 
         # save something so we have an initial date
-        self.api_response(data={"last_visited_module_id": six.text_type(initial_unit.location)})
+        self.api_response(data={"last_visited_module_id": str(initial_unit.location)})
 
         # now actually update it
         response = self.api_response(
             data={
-                "last_visited_module_id": six.text_type(update_unit.location),
+                "last_visited_module_id": str(update_unit.location),
                 "modification_date": date.isoformat()
             }
         )
-        assert response.data['last_visited_module_id'] == six.text_type(expected_subsection.location)
+        assert response.data['last_visited_module_id'] == str(expected_subsection.location)
 
     def test_old_date(self):
         self.login_and_enroll()
@@ -538,11 +531,11 @@ class TestCourseStatusPATCH(CourseStatusAPITestCase, MobileAuthUserTestMixin,
         self.login_and_enroll()
         response = self.api_response(
             data={
-                "last_visited_module_id": six.text_type(self.other_unit.location),
+                "last_visited_module_id": str(self.other_unit.location),
                 "modification_date": timezone.now().isoformat()
             }
         )
-        assert response.data['last_visited_module_id'] == six.text_type(self.other_sub_section.location)
+        assert response.data['last_visited_module_id'] == str(self.other_sub_section.location)
 
     def test_invalid_date(self):
         self.login_and_enroll()
@@ -560,7 +553,7 @@ class TestCourseEnrollmentSerializer(MobileAPITestCase, MilestonesTestCaseMixin)
     ENABLED_SIGNALS = ['course_published']
 
     def setUp(self):
-        super(TestCourseEnrollmentSerializer, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.login_and_enroll()
         self.request = RequestFactory().get('/')
         self.request.user = self.user

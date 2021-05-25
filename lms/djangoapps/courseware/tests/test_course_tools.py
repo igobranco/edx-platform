@@ -5,19 +5,16 @@ Unit tests for course tools.
 
 import datetime
 
+from unittest.mock import patch
 import crum
 import pytz
 from django.test import RequestFactory
-from mock import patch
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.course_modes.tests.factories import CourseModeFactory
-from edx_toggles.toggles.testutils import override_waffle_flag  # lint-amnesty, pylint: disable=wrong-import-order
 from lms.djangoapps.courseware.course_tools import FinancialAssistanceTool, VerifiedUpgradeTool
 from lms.djangoapps.courseware.models import DynamicUpgradeDeadlineConfiguration
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
-from openedx.core.djangoapps.schedules.config import CREATE_SCHEDULE_WAFFLE_FLAG
-from openedx.core.djangoapps.site_configuration.tests.factories import SiteFactory
 from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory
@@ -27,7 +24,7 @@ class VerifiedUpgradeToolTest(SharedModuleStoreTestCase):  # lint-amnesty, pylin
 
     @classmethod
     def setUpClass(cls):
-        super(VerifiedUpgradeToolTest, cls).setUpClass()
+        super().setUpClass()
         cls.now = datetime.datetime.now(pytz.UTC)
 
         cls.course = CourseFactory.create(
@@ -39,20 +36,14 @@ class VerifiedUpgradeToolTest(SharedModuleStoreTestCase):  # lint-amnesty, pylin
         )
         cls.course_overview = CourseOverview.get_from_id(cls.course.id)
 
-    @override_waffle_flag(CREATE_SCHEDULE_WAFFLE_FLAG, True)
     def setUp(self):
-        super(VerifiedUpgradeToolTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.course_verified_mode = CourseModeFactory(
             course_id=self.course.id,
             mode_slug=CourseMode.VERIFIED,
             expiration_datetime=self.now + datetime.timedelta(days=30),
         )
-
-        patcher = patch('openedx.core.djangoapps.schedules.signals.get_current_site')
-        mock_get_current_site = patcher.start()
-        self.addCleanup(patcher.stop)
-        mock_get_current_site.return_value = SiteFactory.create()
 
         DynamicUpgradeDeadlineConfiguration.objects.create(enabled=True)
 
@@ -111,7 +102,7 @@ class FinancialAssistanceToolTest(SharedModuleStoreTestCase):
     """
     @classmethod
     def setUpClass(cls):
-        super(FinancialAssistanceToolTest, cls).setUpClass()
+        super().setUpClass()
         cls.now = datetime.datetime.now(pytz.UTC)
 
         cls.course = CourseFactory.create(
@@ -122,9 +113,8 @@ class FinancialAssistanceToolTest(SharedModuleStoreTestCase):
         )
         cls.course_overview = CourseOverview.get_from_id(cls.course.id)
 
-    @override_waffle_flag(CREATE_SCHEDULE_WAFFLE_FLAG, True)
     def setUp(self):
-        super(FinancialAssistanceToolTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.course_financial_mode = CourseModeFactory(
             course_id=self.course.id,
@@ -189,7 +179,7 @@ class FinancialAssistanceToolTest(SharedModuleStoreTestCase):
         assert not FinancialAssistanceTool().is_enabled(self.request, self.course.id)
 
     def test_tool_not_visible_when_end_date_passed(self):
-        self.course_overview.end_date = self.now - datetime.timedelta(days=30)
+        self.course_overview.end = self.now - datetime.timedelta(days=30)
         self.course_overview.save()
         assert not FinancialAssistanceTool().is_enabled(self.request, self.course_overview.id)
 

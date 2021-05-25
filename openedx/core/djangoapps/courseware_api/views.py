@@ -2,7 +2,7 @@
 Course API Views
 """
 
-import json
+import json  # lint-amnesty, pylint: disable=unused-import
 
 from completion.exceptions import UnavailableCompletionData
 from completion.utilities import get_key_to_last_completed_block
@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.djangoapps.course_modes.models import CourseMode
+from common.djangoapps.util.views import expose_header
 from lms.djangoapps.edxnotes.helpers import is_feature_enabled
 from lms.djangoapps.certificates.api import get_certificate_url
 from lms.djangoapps.certificates.models import GeneratedCertificate
@@ -29,23 +30,34 @@ from lms.djangoapps.courseware.access_response import (
     CoursewareMicrofrontendDisabledAccessError,
 )
 from lms.djangoapps.courseware.context_processor import user_timezone_locale_prefs
-from lms.djangoapps.courseware.courses import check_course_access, get_course_by_id
+from lms.djangoapps.courseware.courses import check_course_access
 from lms.djangoapps.courseware.masquerade import setup_masquerade
 from lms.djangoapps.courseware.module_render import get_module_by_usage_id
 from lms.djangoapps.courseware.tabs import get_course_tab_list
-from lms.djangoapps.courseware.toggles import REDIRECT_TO_COURSEWARE_MICROFRONTEND, course_exit_page_is_active
+from lms.djangoapps.courseware.toggles import (
+    courseware_legacy_is_visible,
+    courseware_mfe_is_visible,
+    course_exit_page_is_active,
+    mfe_special_exams_is_active,
+)
 from lms.djangoapps.courseware.views.views import get_cert_data
 from lms.djangoapps.grades.api import CourseGradeFactory
 from lms.djangoapps.verify_student.services import IDVerificationService
+from openedx.core.djangoapps.agreements.api import get_integrity_signature
+from openedx.core.djangoapps.agreements.toggles import is_integrity_signature_enabled
+from openedx.core.djangoapps.courseware_api.utils import get_celebrations_dict
+from openedx.core.djangoapps.programs.utils import ProgramProgressMeter
 from openedx.core.lib.api.authentication import BearerAuthenticationAllowInactiveUser
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin
-from openedx.core.djangoapps.programs.utils import ProgramProgressMeter
+from openedx.core.lib.courses import get_course_by_id
 from openedx.features.course_experience import DISPLAY_COURSE_SOCK_FLAG
 from openedx.features.content_type_gating.models import ContentTypeGatingConfig
 from openedx.features.course_duration_limits.access import get_access_expiration_data
 from openedx.features.discounts.utils import generate_offer_data
 from common.djangoapps.student.models import (
-    CourseEnrollment, CourseEnrollmentCelebration, LinkedInAddToProfileConfiguration
+    CourseEnrollment,
+    CourseEnrollmentCelebration,
+    LinkedInAddToProfileConfiguration
 )
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.search import path_to_location
@@ -66,8 +78,21 @@ class CoursewareMeta:
             username or self.request.user.username,
             course_key,
         )
+        # We must compute course load access *before* setting up masquerading,
+        # else course staff (who are not enrolled) will not be able view
+        # their course from the perspective of a learner.
+        self.load_access = check_course_access(
+            self.overview,
+            self.request.user,
+            'load',
+            check_if_enrolled=True,
+            check_survey_complete=False,
+            check_if_authenticated=True,
+        )
         self.original_user_is_staff = has_access(self.request.user, 'staff', self.overview).has_access
+        self.original_user_is_global_staff = self.request.user.is_staff
         self.course_key = course_key
+        self.course = get_course_by_id(self.course_key)
         self.course_masquerade, self.effective_user = setup_masquerade(
             self.request,
             course_key,
@@ -76,38 +101,28 @@ class CoursewareMeta:
         self.request.user = self.effective_user
         self.is_staff = has_access(self.effective_user, 'staff', self.overview).has_access
         self.enrollment_object = CourseEnrollment.get_enrollment(self.effective_user, self.course_key,
-                                                                 select_related=['celebration'])
+                                                                 select_related=['celebration', 'user__celebration'])
+        self.can_view_legacy_courseware = courseware_legacy_is_visible(
+            course_key=course_key,
+            is_global_staff=self.original_user_is_global_staff,
+        )
 
     def __getattr__(self, name):
         return getattr(self.overview, name)
 
     def is_microfrontend_enabled_for_user(self):
         """
-        This method is the "opposite" of _redirect_to_learning_mfe in
-        lms/djangoapps/courseware/views/index.py. But not exactly...
-
-        1. It needs to respect the global
-           ENABLE_COURSEWARE_MICROFRONTEND feature flag and redirect users
-           out of the MFE experience if it's turned off.
-        2. It needs to redirect for old Mongo courses.
-        3. It does NOT need to worry about exams - the MFE will handle
-           those on its own. As of this writing, it will redirect back to
-           the LMS experience, but that may change soon.
-        4. Finally, it needs to redirect users who are bucketed out of
-           the MFE experience, but who aren't staff. Staff are allowed to
-           stay.
+        Can this user see the MFE for this course?
         """
-        # REDIRECT: feature disabled globally
-        if not settings.FEATURES.get('ENABLE_COURSEWARE_MICROFRONTEND'):
-            return False
-        # REDIRECT: Old Mongo courses, until removed from platform
-        if self.course_key.deprecated:
-            return False
-        # REDIRECT: If the user isn't staff, redirect if they're bucketed into the old LMS experience.
-        if not self.original_user_is_staff and not REDIRECT_TO_COURSEWARE_MICROFRONTEND.is_enabled(self.course_key):
-            return False
-        # STAY: If the user has made it past all the above, they're good to stay!
-        return True
+        return courseware_mfe_is_visible(
+            course_key=self.course_key,
+            is_global_staff=self.original_user_is_global_staff,
+            is_course_staff=self.original_user_is_staff
+        )
+
+    @property
+    def is_mfe_special_exams_enabled(self):
+        return settings.FEATURES.get('ENABLE_SPECIAL_EXAMS', False) and mfe_special_exams_is_active(self.course_key)
 
     @property
     def enrollment(self):
@@ -147,21 +162,18 @@ class CoursewareMeta:
         return course.license
 
     @property
-    def can_load_courseware(self):  # lint-amnesty, pylint: disable=missing-function-docstring
-        access_response = check_course_access(
-            self.overview,
-            self.effective_user,
-            'load',
-            check_if_enrolled=True,
-            check_survey_complete=False,
-            check_if_authenticated=True,
-        ).to_json()
+    def can_load_courseware(self) -> dict:
+        """
+        Can the user load this course in the learning micro-frontend?
+
+        Return a JSON-friendly access response.
+        """
         # Only check whether the MFE is enabled if the user would otherwise be allowed to see it
         # This means that if the user was denied access, they'll see a meaningful message first if
         # there is one.
-        if access_response and not self.is_microfrontend_enabled_for_user():
+        if self.load_access and not self.is_microfrontend_enabled_for_user():
             return CoursewareMicrofrontendDisabledAccessError().to_json()
-        return access_response
+        return self.load_access.to_json()
 
     @property
     def tabs(self):
@@ -200,11 +212,11 @@ class CoursewareMeta:
     @property
     def celebrations(self):
         """
-        Returns a list of celebrations that should be performed.
+        Returns a dict of celebrations that should be performed.
         """
-        return {
-            'first_section': CourseEnrollmentCelebration.should_celebrate_first_section(self.enrollment_object),
-        }
+        browser_timezone = self.request.query_params.get('browser_timezone', None)
+        celebrations = get_celebrations_dict(self.effective_user, self.enrollment_object, self.course, browser_timezone)
+        return celebrations
 
     @property
     def user_has_passing_grade(self):
@@ -281,6 +293,22 @@ class CoursewareMeta:
             return linkedin_config.add_to_profile_url(
                 self.overview.display_name, user_certificate.mode, cert_url, certificate=user_certificate,
             )
+
+    @property
+    def user_needs_integrity_signature(self):
+        """
+        Boolean describing whether the user needs to sign the integrity agreement for a course.
+        """
+        if (
+            not self.is_staff
+            and self.enrollment_object
+            and self.enrollment_object.mode in CourseMode.CERTIFICATE_RELEVANT_MODES
+            and is_integrity_signature_enabled()
+        ):
+            signature = get_integrity_signature(self.effective_user.username, str(self.course_key))
+            if not signature:
+                return True
+        return False
 
     @property
     def related_programs(self):
@@ -387,6 +415,7 @@ class CoursewareInformation(RetrieveAPIView):
         * can_load_course: Whether the user can view the course (AccessResponse object)
         * is_staff: Whether the effective user has staff access to the course
         * original_user_is_staff: Whether the original user has staff access to the course
+        * can_view_legacy_courseware: Indicates whether the user is able to see the legacy courseware view
         * user_has_passing_grade: Whether or not the effective user's grade is equal to or above the courses minimum
             passing grade
         * course_exit_page_is_active: Flag for the learning mfe on whether or not the course exit page should display
@@ -394,6 +423,7 @@ class CoursewareInformation(RetrieveAPIView):
         * verify_identity_url: URL for a learner to verify their identity. Only returned for learners enrolled in a
             verified mode. Will update to reverify URL if necessary.
         * linkedin_add_to_profile_url: URL to add the effective user's certificate to a LinkedIn Profile.
+        * user_needs_integrity_signature: Whether the user needs to sign the integrity agreement for the course
 
     **Parameters:**
 
@@ -413,6 +443,7 @@ class CoursewareInformation(RetrieveAPIView):
 
     authentication_classes = (
         JwtAuthentication,
+        BearerAuthenticationAllowInactiveUser,
         SessionAuthenticationAllowInactiveUser,
     )
 
@@ -442,6 +473,20 @@ class CoursewareInformation(RetrieveAPIView):
         context = super().get_serializer_context()
         context['requested_fields'] = self.request.GET.get('requested_fields', None)
         return context
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        """
+        Return the final response, exposing the 'Date' header for computing relative time to the dates in the data.
+
+        Important dates such as 'access_expiration' are enforced server-side based on correct time; client-side clocks
+        are frequently substantially far off which could lead to inaccurate messaging and incorrect expectations.
+        Therefore, any messaging about those dates should be based on the server time and preferably in relative terms
+        (time remaining); the 'Date' header is a straightforward and generalizable way for client-side code to get this
+        reference.
+        """
+        response = super().finalize_response(request, response, *args, **kwargs)
+        # Adding this header should be moved to global middleware, not just this endpoint
+        return expose_header('Date', response)
 
 
 class SequenceMetadata(DeveloperErrorViewMixin, APIView):
@@ -480,7 +525,7 @@ class SequenceMetadata(DeveloperErrorViewMixin, APIView):
         try:
             usage_key = UsageKey.from_string(usage_key_string)
         except InvalidKeyError:
-            raise NotFound("Invalid usage key: '{}'.".format(usage_key_string))  # lint-amnesty, pylint: disable=raise-missing-from
+            raise NotFound(f"Invalid usage key: '{usage_key_string}'.")  # lint-amnesty, pylint: disable=raise-missing-from
 
         _, request.user = setup_masquerade(
             request,
@@ -500,7 +545,7 @@ class SequenceMetadata(DeveloperErrorViewMixin, APIView):
         if request.user.is_anonymous:
             view = PUBLIC_VIEW
 
-        return Response(json.loads(sequence.handle_ajax('metadata', None, view=view)))
+        return Response(sequence.get_metadata(view=view))
 
 
 class Resume(DeveloperErrorViewMixin, APIView):

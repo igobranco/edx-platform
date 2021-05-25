@@ -5,33 +5,32 @@ Unit tests for instructor_dashboard.py.
 
 import datetime
 import re
+from unittest.mock import patch
 
 import ddt
-import six
 from django.conf import settings
 from django.contrib.sites.models import Site
 from django.test.utils import override_settings
 from django.urls import reverse
-from mock import patch
+from edx_toggles.toggles.testutils import override_waffle_flag
 from pyquery import PyQuery as pq
 from pytz import UTC
-from six import text_type
-from six.moves import range
 
-from common.test.utils import XssTestMixin
 from common.djangoapps.course_modes.models import CourseMode
-from edx_toggles.toggles.testutils import override_waffle_flag  # lint-amnesty, pylint: disable=wrong-import-order
 from common.djangoapps.edxmako.shortcuts import render_to_response
+from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.roles import CourseFinanceAdminRole  # lint-amnesty, pylint: disable=unused-import
+from common.djangoapps.student.tests.factories import AdminFactory, CourseAccessRoleFactory, CourseEnrollmentFactory
+from common.djangoapps.student.tests.factories import StaffFactory
+from common.djangoapps.student.tests.factories import UserFactory
+from common.test.utils import XssTestMixin
 from lms.djangoapps.courseware.tabs import get_course_tab_list
-from lms.djangoapps.courseware.tests.factories import StaffFactory, StudentModuleFactory, UserFactory
+from lms.djangoapps.courseware.tests.factories import StudentModuleFactory
 from lms.djangoapps.courseware.tests.helpers import LoginEnrollmentTestCase
 from lms.djangoapps.grades.config.waffle import WRITABLE_GRADEBOOK, waffle_flags
 from lms.djangoapps.instructor.toggles import DATA_DOWNLOAD_V2
 from lms.djangoapps.instructor.views.gradebook_api import calculate_page_info
 from openedx.core.djangoapps.site_configuration.models import SiteConfiguration
-from common.djangoapps.student.models import CourseEnrollment
-from common.djangoapps.student.roles import CourseFinanceAdminRole  # lint-amnesty, pylint: disable=unused-import
-from common.djangoapps.student.tests.factories import AdminFactory, CourseAccessRoleFactory, CourseEnrollmentFactory
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.django_utils import TEST_DATA_SPLIT_MODULESTORE, ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory, check_mongo_calls
@@ -61,7 +60,7 @@ class TestInstructorDashboard(ModuleStoreTestCase, LoginEnrollmentTestCase, XssT
         """
         Set up tests
         """
-        super(TestInstructorDashboard, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = CourseFactory.create(
             grading_policy={"GRADE_CUTOFFS": {"A": 0.75, "B": 0.63, "C": 0.57, "D": 0.5}},
             display_name='<script>alert("XSS")</script>'
@@ -85,21 +84,21 @@ class TestInstructorDashboard(ModuleStoreTestCase, LoginEnrollmentTestCase, XssT
         self.client.login(username=self.instructor.username, password="test")
 
         # URL for instructor dash
-        self.url = reverse('instructor_dashboard', kwargs={'course_id': text_type(self.course.id)})
+        self.url = reverse('instructor_dashboard', kwargs={'course_id': str(self.course.id)})
 
     def get_dashboard_enrollment_message(self):
         """
         Returns expected dashboard enrollment message with link to Insights.
         """
-        return u'Enrollment data is now available in <a href="http://example.com/courses/{}" ' \
-               'rel="noopener" target="_blank">Example</a>.'.format(text_type(self.course.id))
+        return 'Enrollment data is now available in <a href="http://example.com/courses/{}" ' \
+               'rel="noopener" target="_blank">Example</a>.'.format(str(self.course.id))
 
     def get_dashboard_analytics_message(self):
         """
         Returns expected dashboard demographic message with link to Insights.
         """
-        return u'For analytics about your course, go to <a href="http://example.com/courses/{}" ' \
-               'rel="noopener" target="_blank">Example</a>.'.format(text_type(self.course.id))
+        return 'For analytics about your course, go to <a href="http://example.com/courses/{}" ' \
+               'rel="noopener" target="_blank">Example</a>.'.format(str(self.course.id))
 
     def test_instructor_tab(self):
         """
@@ -203,7 +202,7 @@ class TestInstructorDashboard(ModuleStoreTestCase, LoginEnrollmentTestCase, XssT
         url = reverse(
             'instructor_dashboard',
             kwargs={
-                'course_id': six.text_type(self.course_info.id)
+                'course_id': str(self.course_info.id)
             }
         )
 
@@ -237,7 +236,7 @@ class TestInstructorDashboard(ModuleStoreTestCase, LoginEnrollmentTestCase, XssT
         url = reverse(
             'instructor_dashboard',
             kwargs={
-                'course_id': six.text_type(self.course_info.id)
+                'course_id': str(self.course_info.id)
             }
         )
         response = self.client.get(url)
@@ -247,53 +246,6 @@ class TestInstructorDashboard(ModuleStoreTestCase, LoginEnrollmentTestCase, XssT
             self.assertContains(response, reason_field)
         else:
             self.assertNotContains(response, reason_field)
-
-    def test_membership_site_configuration_role(self):
-        """
-        Verify that the role choices set via site configuration are loaded in the membership tab
-        of the instructor dashboard
-        """
-
-        configuration_values = {
-            "MANUAL_ENROLLMENT_ROLE_CHOICES": [
-                "role1",
-                "role2",
-            ]
-        }
-        site = Site.objects.first()
-        SiteConfiguration.objects.create(
-            site=site,
-            site_values=configuration_values,
-            enabled=True
-        )
-        url = reverse(
-            'instructor_dashboard',
-            kwargs={
-                'course_id': six.text_type(self.course_info.id)
-            }
-        )
-
-        response = self.client.get(url)
-        self.assertContains(response, '<option value="role1">role1</option>')
-        self.assertContains(response, '<option value="role2">role2</option>')
-
-    def test_membership_default_role(self):
-        """
-        Verify that in the absence of site configuration role choices, default values of role choices are loaded
-        in the membership tab of the instructor dashboard
-        """
-
-        url = reverse(
-            'instructor_dashboard',
-            kwargs={
-                'course_id': six.text_type(self.course_info.id)
-            }
-        )
-
-        response = self.client.get(url)
-        self.assertContains(response, '<option value="Learner">Learner</option>')
-        self.assertContains(response, '<option value="Support">Support</option>')
-        self.assertContains(response, '<option value="Partner">Partner</option>')
 
     def test_student_admin_staff_instructor(self):
         """
@@ -325,7 +277,7 @@ class TestInstructorDashboard(ModuleStoreTestCase, LoginEnrollmentTestCase, XssT
         with override_waffle_flag(waffle_flag, active=True):
             response = self.client.get(self.url)
 
-        expected_gradebook_url = 'http://gradebook.local.edx.org/{}'.format(self.course.id)
+        expected_gradebook_url = f'http://gradebook.local.edx.org/{self.course.id}'
         self.assertContains(response, expected_gradebook_url)
         self.assertContains(response, 'View Gradebook')
 
@@ -347,7 +299,7 @@ class TestInstructorDashboard(ModuleStoreTestCase, LoginEnrollmentTestCase, XssT
         with override_waffle_flag(waffle_flag, active=True):
             response = self.client.get(self.url)
 
-        expected_gradebook_url = '{}/{}'.format(settings.WRITABLE_GRADEBOOK_URL, self.course.id)
+        expected_gradebook_url = f'{settings.WRITABLE_GRADEBOOK_URL}/{self.course.id}'
         self.assertContains(response, expected_gradebook_url)
         self.assertContains(response, 'View Gradebook')
 
@@ -581,7 +533,7 @@ class TestInstructorDashboardPerformance(ModuleStoreTestCase, LoginEnrollmentTes
         """
         Set up tests
         """
-        super(TestInstructorDashboardPerformance, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = CourseFactory.create(
             grading_policy={"GRADE_CUTOFFS": {"A": 0.75, "B": 0.63, "C": 0.57, "D": 0.5}},
             display_name='<script>alert("XSS")</script>',
@@ -643,7 +595,7 @@ class TestInstructorDashboardPerformance(ModuleStoreTestCase, LoginEnrollmentTes
             problem = ItemFactory.create(
                 category="problem",
                 parent=vertical,
-                display_name=u"A Problem Block %d" % i,
+                display_name="A Problem Block %d" % i,
                 weight=1,
                 publish_item=False,
                 metadata={'rerandomize': 'always'},

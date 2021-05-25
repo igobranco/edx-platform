@@ -5,18 +5,13 @@ running state of a course.
 """
 
 
+import csv
 import logging
 from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime
-from io import StringIO  # lint-amnesty, pylint: disable=unused-import
 from tempfile import TemporaryFile
 from time import time
-from zipfile import ZipFile  # lint-amnesty, pylint: disable=unused-import
-import csv
-import os  # lint-amnesty, pylint: disable=unused-import
-import unicodecsv
-import six
 
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.core.exceptions import ValidationError
@@ -24,12 +19,12 @@ from django.core.files.storage import DefaultStorage
 from openassessment.data import OraAggregateData, OraDownloadData
 from pytz import UTC
 
+from common.djangoapps.student.models import unique_id_for_user, anonymous_id_for_user
 from lms.djangoapps.instructor_analytics.basic import get_proctored_exam_results
 from lms.djangoapps.instructor_analytics.csvs import format_dictlist
+from lms.djangoapps.survey.models import SurveyAnswer
 from openedx.core.djangoapps.course_groups.cohorts import add_user_to_cohort
 from openedx.core.djangoapps.course_groups.models import CourseUserGroup
-from lms.djangoapps.survey.models import SurveyAnswer
-from common.djangoapps.util.file import UniversalNewlineIterator
 
 from .runner import TaskProgress
 from .utils import (
@@ -37,6 +32,7 @@ from .utils import (
     UPDATE_STATUS_SUCCEEDED,
     upload_csv_to_report_store,
     upload_zip_to_report_store,
+
 )
 
 # define different loggers for use within tasks and on client side
@@ -156,7 +152,7 @@ def _get_csv_file_content(csv_file):
     returns appropriate csv file content based on input and output is
     compatible with python versions
     """
-    if (not isinstance(csv_file, str)) and six.PY3:
+    if not isinstance(csv_file, str):
         content = csv_file.read()
     else:
         content = csv_file
@@ -166,10 +162,7 @@ def _get_csv_file_content(csv_file):
     else:
         csv_content = content
 
-    if six.PY3:
-        return csv_content
-    else:
-        return UniversalNewlineIterator(csv_content)
+    return csv_content
 
 
 def cohort_students_and_upload(_xmodule_instance_args, _entry_id, course_id, task_input, action_name):  # lint-amnesty, pylint: disable=too-many-statements
@@ -183,10 +176,7 @@ def cohort_students_and_upload(_xmodule_instance_args, _entry_id, course_id, tas
     # Iterate through rows to get total assignments for task progress
     with DefaultStorage().open(task_input['file_name']) as f:
         total_assignments = 0
-        if six.PY3:
-            reader = csv.DictReader(_get_csv_file_content(f).splitlines())
-        else:
-            reader = unicodecsv.DictReader(_get_csv_file_content(f), encoding='utf-8')
+        reader = csv.DictReader(_get_csv_file_content(f).splitlines())
 
         for _line in reader:
             total_assignments += 1
@@ -204,10 +194,7 @@ def cohort_students_and_upload(_xmodule_instance_args, _entry_id, course_id, tas
 
     with DefaultStorage().open(task_input['file_name']) as f:
 
-        if six.PY3:
-            reader = csv.DictReader(_get_csv_file_content(f).splitlines())
-        else:
-            reader = unicodecsv.DictReader(_get_csv_file_content(f), encoding='utf-8')
+        reader = csv.DictReader(_get_csv_file_content(f).splitlines())
 
         for row in reader:
             # Try to use the 'email' field to identify the user.  If it's not present, use 'username'.
@@ -277,7 +264,7 @@ def cohort_students_and_upload(_xmodule_instance_args, _entry_id, course_id, tas
             else status_dict[column_name]
             for column_name in output_header
         ]
-        for _cohort_name, status_dict in six.iteritems(cohorts_status)
+        for _cohort_name, status_dict in cohorts_status.items()
     ]
     output_rows.insert(0, output_header)
     upload_csv_to_report_store(output_rows, 'cohort_results', course_id, start_date)
@@ -292,27 +279,53 @@ def upload_ora2_data(
     Collect ora2 responses and upload them to S3 as a CSV
     """
 
+    return _upload_ora2_data_common(
+        _xmodule_instance_args, _entry_id, course_id, _task_input, action_name,
+        'data', OraAggregateData.collect_ora2_data
+    )
+
+
+def upload_ora2_summary(
+        _xmodule_instance_args, _entry_id, course_id, _task_input, action_name
+):
+    """
+    Collect ora2/student summaries and upload them to file storage as a CSV
+    """
+
+    return _upload_ora2_data_common(
+        _xmodule_instance_args, _entry_id, course_id, _task_input, action_name,
+        'summary', OraAggregateData.collect_ora2_summary
+    )
+
+
+def _upload_ora2_data_common(
+        _xmodule_instance_args, _entry_id, course_id, _task_input, action_name,
+        report_name, csv_gen_func
+):
+    """
+    Common code for uploading data or summary csv report.
+    """
     start_date = datetime.now(UTC)
     start_time = time()
 
     num_attempted = 1
     num_total = 1
 
-    fmt = u'Task: {task_id}, InstructorTask ID: {entry_id}, Course: {course_id}, Input: {task_input}'
+    fmt = 'Task: {task_id}, InstructorTask ID: {entry_id}, Course: {course_id}, Input: {task_input}'
     task_info_string = fmt.format(
         task_id=_xmodule_instance_args.get('task_id') if _xmodule_instance_args is not None else None,
         entry_id=_entry_id,
         course_id=course_id,
         task_input=_task_input
     )
-    TASK_LOG.info(u'%s, Task type: %s, Starting task execution', task_info_string, action_name)
+    TASK_LOG.info('%s, Task type: %s, Starting task execution', task_info_string, action_name)
 
     task_progress = TaskProgress(action_name, num_total, start_time)
     task_progress.attempted = num_attempted
 
     curr_step = {'step': "Collecting responses"}
     TASK_LOG.info(
-        u'%s, Task type: %s, Current step: %s for all submissions',
+        '%s, Task type: %s, Current step: %s for all submissions',
         task_info_string,
         action_name,
         curr_step,
@@ -321,8 +334,10 @@ def upload_ora2_data(
     task_progress.update_task_state(extra_meta=curr_step)
 
     try:
-        header, datarows = OraAggregateData.collect_ora2_data(course_id)
-        rows = [header] + [row for row in datarows]  # lint-amnesty, pylint: disable=unnecessary-comprehension
+        header, datarows = csv_gen_func(course_id)
+        rows = [header]
+        for row in datarows:
+            rows.append(row)
     # Update progress to failed regardless of error type
     except Exception:  # pylint: disable=broad-except
         TASK_LOG.exception('Failed to get ORA data.')
@@ -336,18 +351,18 @@ def upload_ora2_data(
     task_progress.succeeded = 1
     curr_step = {'step': "Uploading CSV"}
     TASK_LOG.info(
-        u'%s, Task type: %s, Current step: %s',
+        '%s, Task type: %s, Current step: %s',
         task_info_string,
         action_name,
         curr_step,
     )
     task_progress.update_task_state(extra_meta=curr_step)
 
-    upload_csv_to_report_store(rows, 'ORA_data', course_id, start_date)
+    upload_csv_to_report_store(rows, f'ORA_{report_name}', course_id, start_date)
 
-    curr_step = {'step': 'Finalizing ORA data report'}
+    curr_step = {'step': f'Finalizing ORA {report_name} report'}
     task_progress.update_task_state(extra_meta=curr_step)
-    TASK_LOG.info(u'%s, Task type: %s, Upload complete.', task_info_string, action_name)
+    TASK_LOG.info('%s, Task type: %s, Upload complete.', task_info_string, action_name)
 
     return UPDATE_STATUS_SUCCEEDED
 
@@ -408,7 +423,7 @@ def upload_ora2_submission_files(
         course_id=course_id,
         task_input=_task_input
     )
-    TASK_LOG.info(u'%s, Task type: %s, Starting task execution', task_info_string, action_name)
+    TASK_LOG.info('%s, Task type: %s, Starting task execution', task_info_string, action_name)
 
     task_progress = TaskProgress(action_name, num_total, start_time)
     task_progress.attempted = num_attempted
@@ -433,7 +448,7 @@ def upload_ora2_submission_files(
             'Failed to download and compress submissions attachments.',
             'Error while downloading and compressing submissions attachments',
         ):
-            compressed = OraDownloadData.create_zip_with_attachments(zip_file, course_id, submission_files_data)
+            compressed = OraDownloadData.create_zip_with_attachments(zip_file, submission_files_data)
 
         if compressed is None:
             return UPDATE_STATUS_FAILED
@@ -452,6 +467,58 @@ def upload_ora2_submission_files(
     task_progress.succeeded = 1
     curr_step = {'step': 'Finalizing attachments extracting'}
     task_progress.update_task_state(extra_meta=curr_step)
-    TASK_LOG.info(u'%s, Task type: %s, Upload complete.', task_info_string, action_name)
+    TASK_LOG.info('%s, Task type: %s, Upload complete.', task_info_string, action_name)
+
+    return UPDATE_STATUS_SUCCEEDED
+
+
+def generate_anonymous_ids(_xmodule_instance_args, _entry_id, course_id, task_input, action_name):  # lint-amnesty, pylint: disable=too-many-statements
+    """
+    Generate a 2-column CSV output of user-id, anonymized-user-id
+    """
+    def _log_and_update_progress(step):
+        """
+        Updates progress task and logs
+
+        Arguments:
+            step: current step task is on
+        """
+        TASK_LOG.info(
+            '%s, Task type: %s, Current step: %s for all learners',
+            task_info_string,
+            action_name,
+            step,
+        )
+        task_progress.update_task_state(extra_meta=step)
+    TASK_LOG.info('ANONYMOUS_IDS_TASK: Starting task execution.')
+
+    task_info_string_format = 'Task: {task_id}, InstructorTask ID: {entry_id}, Course: {course_id}, Input: {task_input}'
+    task_info_string = task_info_string_format.format(
+        task_id=_xmodule_instance_args.get('task_id') if _xmodule_instance_args is not None else None,
+        entry_id=_entry_id,
+        course_id=course_id,
+        task_input=task_input
+    )
+    TASK_LOG.info('%s, Task type: %s, Starting task execution', task_info_string, action_name)
+
+    start_time = time()
+    start_date = datetime.now(UTC)
+
+    students = User.objects.filter(
+        courseenrollment__course_id=course_id,
+    ).order_by('id')
+
+    task_progress = TaskProgress(action_name, students.count, start_time)
+    _log_and_update_progress({'step': "Compiling learner rows"})
+
+    header = ['User ID', 'Anonymized User ID', 'Course Specific Anonymized User ID']
+    rows = [[s.id, unique_id_for_user(s), anonymous_id_for_user(s, course_id)]
+            for s in students]
+
+    task_progress.attempted = students.count
+    _log_and_update_progress({'step': "Finished compiling learner rows"})
+
+    csv_name = 'anonymized_ids'
+    upload_csv_to_report_store([header] + rows, csv_name, course_id, start_date)
 
     return UPDATE_STATUS_SUCCEEDED

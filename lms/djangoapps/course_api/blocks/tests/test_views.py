@@ -8,10 +8,10 @@ from unittest import mock
 from unittest.mock import Mock
 from urllib.parse import urlencode, urlunparse
 
+from completion.test_utils import CompletionWaffleTestMixin, submit_completions_for_testing
 from django.conf import settings
 from django.urls import reverse
 from opaque_keys.edx.locator import CourseLocator
-from completion.test_utils import CompletionWaffleTestMixin, submit_completions_for_testing
 
 from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.tests.factories import AdminFactory, CourseEnrollmentFactory, UserFactory
@@ -30,7 +30,7 @@ class TestBlocksView(SharedModuleStoreTestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(TestBlocksView, cls).setUpClass()
+        super().setUpClass()
 
         # create a toy course
         cls.course = ToyCourseFactory.create(
@@ -40,15 +40,15 @@ class TestBlocksView(SharedModuleStoreTestCase):
         cls.course_key = cls.course.id
         cls.course_usage_key = cls.store.make_course_usage_key(cls.course_key)
 
-        cls.non_orphaned_block_usage_keys = set(
+        cls.non_orphaned_block_usage_keys = {
             str(item.location)
             for item in cls.store.get_items(cls.course_key)
             # remove all orphaned items in the course, except for the root 'course' block
             if cls.store.get_parent_location(item.location) or item.category == 'course'
-        )
+        }
 
     def setUp(self):
-        super(TestBlocksView, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         # create and enroll user in the toy course
         self.user = UserFactory.create()
@@ -126,7 +126,7 @@ class TestBlocksView(SharedModuleStoreTestCase):
 
             if xblock.has_children:
                 self.assertSetEqual(
-                    set(str(child.location) for child in xblock.get_children()),
+                    {str(child.location) for child in xblock.get_children()},
                     set(block_data['children']),
                 )
 
@@ -390,16 +390,16 @@ class TestBlocksInCourseView(TestBlocksView, CompletionWaffleTestMixin):  # pyli
     """
 
     def setUp(self):
-        super(TestBlocksInCourseView, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.url = reverse('blocks_in_course')
         self.query_params['course_id'] = str(self.course_key)
         self.override_waffle_switch(True)
-        self.non_orphaned_raw_block_usage_keys = set(
+        self.non_orphaned_raw_block_usage_keys = {
             item.location
             for item in self.store.get_items(self.course_key)
             # remove all orphaned items in the course, except for the root 'course' block
             if self.store.get_parent_location(item.location) or item.category == 'course'
-        )
+        }
 
     def test_no_course_id(self):
         self.query_params.pop('course_id')
@@ -454,3 +454,26 @@ class TestBlocksInCourseView(TestBlocksView, CompletionWaffleTestMixin):  # pyli
         for block in response.data:
             if block['block_id'] in self.non_orphaned_block_usage_keys:
                 assert block.get('completion')
+
+    def test_completion_all_course_with_requested_fields_as_string(self):
+        for block in self.non_orphaned_raw_block_usage_keys:
+            submit_completions_for_testing(self.user, [block])
+
+        response = self.verify_response(params={
+            'depth': 'all',
+            'requested_fields': 'completion,children',
+        })
+        for block_id in self.non_orphaned_block_usage_keys:
+            assert response.data['blocks'][block_id].get('completion')
+
+    def test_completion_all_course_with_nav_depth(self):
+        # when we include nav_depth we get descendants in parent nodes
+        for block in self.non_orphaned_raw_block_usage_keys:
+            submit_completions_for_testing(self.user, [block])
+        response = self.verify_response(params={
+            'depth': 'all',
+            'nav_depth': 3,
+            'requested_fields': ['completion'],
+        })
+        for block_id in self.non_orphaned_block_usage_keys:
+            assert response.data['blocks'][block_id].get('completion')

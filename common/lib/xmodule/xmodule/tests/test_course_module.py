@@ -4,13 +4,14 @@
 import itertools
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import Mock, patch
+
 import pytest
 import ddt
 from dateutil import parser
 from django.conf import settings
 from django.test import override_settings
 from fs.memoryfs import MemoryFS
-from mock import Mock, patch
 from opaque_keys.edx.keys import CourseKey
 from pytz import utc
 from xblock.runtime import DictKeyValueStore, KvsFieldData
@@ -18,6 +19,7 @@ from xblock.runtime import DictKeyValueStore, KvsFieldData
 from openedx.core.lib.teams_config import TeamsConfig, DEFAULT_COURSE_RUN_MAX_TEAM_SIZE
 import xmodule.course_module
 from xmodule.modulestore.xml import ImportSystem, XMLModuleStore
+from xmodule.modulestore.exceptions import InvalidProctoringProvider
 
 ORG = 'test_org'
 COURSE = 'test_course'
@@ -46,7 +48,7 @@ class DummySystem(ImportSystem):  # lint-amnesty, pylint: disable=abstract-metho
         course_dir = "test_dir"
         error_tracker = Mock()
 
-        super(DummySystem, self).__init__(  # lint-amnesty, pylint: disable=super-with-arguments
+        super().__init__(
             xmlstore=xmlstore,
             course_id=course_id,
             course_dir=course_dir,
@@ -62,7 +64,7 @@ def get_dummy_course(start, announcement=None, is_new=None, advertised_start=Non
     system = DummySystem(load_error_modules=True)
 
     def to_attrb(n, v):
-        return '' if v is None else '{0}="{1}"'.format(n, v).lower()
+        return '' if v is None else f'{n}="{v}"'.lower()
 
     is_new = to_attrb('is_new', is_new)
     announcement = to_attrb('announcement', announcement)
@@ -100,7 +102,7 @@ class HasEndedMayCertifyTestCase(unittest.TestCase):
     """Double check the semantics around when to finalize courses."""
 
     def setUp(self):
-        super(HasEndedMayCertifyTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         system = DummySystem(load_error_modules=True)  # lint-amnesty, pylint: disable=unused-variable
         #sample_xml = """
@@ -161,7 +163,7 @@ class IsNewCourseTestCase(unittest.TestCase):
     """Make sure the property is_new works on courses"""
 
     def setUp(self):
-        super(IsNewCourseTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         # Needed for test_is_newish
         datetime_patcher = patch.object(
@@ -210,13 +212,13 @@ class IsNewCourseTestCase(unittest.TestCase):
         for a, b, assertion in dates:
             a_score = get_dummy_course(start=a[0], announcement=a[1], advertised_start=a[2]).sorting_score
             b_score = get_dummy_course(start=b[0], announcement=b[1], advertised_start=b[2]).sorting_score
-            print("Comparing %s to %s" % (a, b))
+            print(f"Comparing {a} to {b}")
             assertion(a_score, b_score)
 
     start_advertised_settings = [
         # start, advertised, result, is_still_default, date_time_result
-        ('2012-12-02T12:00', None, 'Dec 02, 2012', False, u'Dec 02, 2012 at 12:00 UTC'),
-        ('2012-12-02T12:00', '2011-11-01T12:00', 'Nov 01, 2011', False, u'Nov 01, 2011 at 12:00 UTC'),
+        ('2012-12-02T12:00', None, 'Dec 02, 2012', False, 'Dec 02, 2012 at 12:00 UTC'),
+        ('2012-12-02T12:00', '2011-11-01T12:00', 'Nov 01, 2011', False, 'Nov 01, 2011 at 12:00 UTC'),
         ('2012-12-02T12:00', 'Spring 2012', 'Spring 2012', False, 'Spring 2012'),
         ('2012-12-02T12:00', 'November, 2011', 'November, 2011', False, 'November, 2011'),
         (xmodule.course_module.CourseFields.start.default, None, 'TBD', True, 'TBD'),
@@ -231,12 +233,12 @@ class IsNewCourseTestCase(unittest.TestCase):
     def test_display_organization(self):
         descriptor = get_dummy_course(start='2012-12-02T12:00', is_new=True)
         assert descriptor.location.org != descriptor.display_org_with_default
-        assert descriptor.display_org_with_default == '{0}_display'.format(ORG)
+        assert descriptor.display_org_with_default == f'{ORG}_display'
 
     def test_display_coursenumber(self):
         descriptor = get_dummy_course(start='2012-12-02T12:00', is_new=True)
         assert descriptor.location.course != descriptor.display_number_with_default
-        assert descriptor.display_number_with_default == '{0}_display'.format(COURSE)
+        assert descriptor.display_number_with_default == f'{COURSE}_display'
 
     def test_is_newish(self):
         descriptor = get_dummy_course(start='2012-12-02T12:00', is_new=True)
@@ -274,7 +276,7 @@ class TeamsConfigurationTestCase(unittest.TestCase):
     """
 
     def setUp(self):
-        super(TeamsConfigurationTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = get_dummy_course('2012-12-02T12:00')
         self.course.teams_configuration = TeamsConfig(None)
         self.count = itertools.count()
@@ -290,9 +292,9 @@ class TeamsConfigurationTestCase(unittest.TestCase):
     def make_topic(self):
         """ Make a sample topic dictionary. """
         next_num = next(self.count)
-        topic_id = "topic_id_{}".format(next_num)
-        name = "Name {}".format(next_num)
-        description = "Description {}".format(next_num)
+        topic_id = f"topic_id_{next_num}"
+        name = f"Name {next_num}"
+        description = f"Description {next_num}"
         return {
             "name": name,
             "description": description,
@@ -363,20 +365,20 @@ class SelfPacedTestCase(unittest.TestCase):
     """Tests for self-paced courses."""
 
     def setUp(self):
-        super(SelfPacedTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = get_dummy_course('2012-12-02T12:00')
 
     def test_default(self):
         assert not self.course.self_paced
 
 
-class CourseDescriptorTestCase(unittest.TestCase):
+class CourseBlockTestCase(unittest.TestCase):
     """
-    Tests for a select few functions from CourseDescriptor.
+    Tests for a select few functions from CourseBlock.
 
     I wrote these test functions in order to satisfy the coverage checker for
-    PR #8484, which modified some code within CourseDescriptor. However, this
-    class definitely isn't a comprehensive test case for CourseDescriptor, as
+    PR #8484, which modified some code within CourseBlock. However, this
+    class definitely isn't a comprehensive test case for CourseBlock, as
     writing a such a test case was out of the scope of the PR.
     """
 
@@ -384,19 +386,19 @@ class CourseDescriptorTestCase(unittest.TestCase):
         """
         Initialize dummy testing course.
         """
-        super(CourseDescriptorTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = get_dummy_course(start=_TODAY, end=_NEXT_WEEK)
 
     def test_clean_id(self):
         """
-        Test CourseDescriptor.clean_id.
+        Test CourseBlock.clean_id.
         """
         assert self.course.clean_id() == 'course_ORSXG5C7N5ZGOL3UMVZXIX3DN52XE43FF52GK43UL5ZHK3Q='
         assert self.course.clean_id(padding_char='$') == 'course_ORSXG5C7N5ZGOL3UMVZXIX3DN52XE43FF52GK43UL5ZHK3Q$'
 
     def test_has_started(self):
         """
-        Test CourseDescriptor.has_started.
+        Test CourseBlock.has_started.
         """
         self.course.start = _LAST_WEEK
         assert self.course.has_started()
@@ -405,7 +407,7 @@ class CourseDescriptorTestCase(unittest.TestCase):
 
     def test_number(self):
         """
-        Test CourseDescriptor.number.
+        Test CourseBlock.number.
         """
         assert self.course.number == COURSE
 
@@ -427,7 +429,7 @@ class ProctoringProviderTestCase(unittest.TestCase):
         """
         Initialize dummy testing course.
         """
-        super(ProctoringProviderTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.proctoring_provider = xmodule.course_module.ProctoringProvider()
 
     def test_from_json_with_platform_default(self):
@@ -447,13 +449,13 @@ class ProctoringProviderTestCase(unittest.TestCase):
         throws a ValueError with the correct error message.
         """
         provider = 'invalid-provider'
-        allowed_proctoring_providers = [u'mock', u'mock_proctoring_without_rules']
+        allowed_proctoring_providers = ['mock', 'mock_proctoring_without_rules']
 
-        with pytest.raises(ValueError) as context_manager:
+        with pytest.raises(InvalidProctoringProvider) as context_manager:
             self.proctoring_provider.from_json(provider)
-        assert context_manager.exception.args[0] ==\
-               [f'The selected proctoring provider, {provider},'
-                f' is not a valid provider. Please select from one of {allowed_proctoring_providers}.']
+        expected_error = f'The selected proctoring provider, {provider}, is not a valid provider. ' \
+                         f'Please select from one of {allowed_proctoring_providers}.'
+        assert str(context_manager.value) == expected_error
 
     def test_from_json_adds_platform_default_for_missing_provider(self):
         """

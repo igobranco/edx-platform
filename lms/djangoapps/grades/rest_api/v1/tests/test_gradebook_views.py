@@ -5,23 +5,32 @@ Tests for the course grading API view
 
 import json
 from collections import OrderedDict, namedtuple
+from contextlib import contextmanager
 from datetime import datetime
-import pytest
+from unittest.mock import MagicMock, patch
 
 import ddt
+import pytest
 from django.urls import reverse
+from edx_toggles.toggles.testutils import override_waffle_flag
 from freezegun import freeze_time
-from mock import MagicMock, patch
 from opaque_keys.edx.locator import BlockUsageLocator
 from pytz import UTC
 from rest_framework import status
 from rest_framework.test import APITestCase
-from six import text_type
 
 from common.djangoapps.course_modes.models import CourseMode
-from edx_toggles.toggles.testutils import override_waffle_flag  # lint-amnesty, pylint: disable=wrong-import-order
+from common.djangoapps.student.roles import (
+    CourseBetaTesterRole,
+    CourseCcxCoachRole,
+    CourseDataResearcherRole,
+    CourseInstructorRole,
+    CourseStaffRole
+)
+from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
+from common.djangoapps.student.tests.factories import InstructorFactory
+from common.djangoapps.student.tests.factories import StaffFactory
 from lms.djangoapps.certificates.models import CertificateStatuses, GeneratedCertificate
-from lms.djangoapps.courseware.tests.factories import InstructorFactory, StaffFactory
 from lms.djangoapps.grades.config.waffle import WRITABLE_GRADEBOOK, waffle_flags
 from lms.djangoapps.grades.constants import GradeOverrideFeatureEnum
 from lms.djangoapps.grades.course_data import CourseData
@@ -38,7 +47,6 @@ from lms.djangoapps.grades.rest_api.v1.views import CourseEnrollmentPagination
 from lms.djangoapps.grades.subsection_grade import ReadSubsectionGrade
 from openedx.core.djangoapps.content.course_overviews.tests.factories import CourseOverviewFactory
 from openedx.core.djangoapps.course_groups.tests.helpers import CohortFactory
-from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
 from xmodule.modulestore.tests.django_utils import TEST_DATA_SPLIT_MODULESTORE, SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 
@@ -53,7 +61,7 @@ class CourseGradingViewTest(SharedModuleStoreTestCase, APITestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(CourseGradingViewTest, cls).setUpClass()
+        super().setUpClass()
 
         cls.course = CourseFactory.create(display_name='test course', run="Testing_course")
         cls.course_key = cls.course.id
@@ -177,28 +185,28 @@ class CourseGradingViewTest(SharedModuleStoreTestCase, APITestCase):
                     'assignment_type': None,
                     'display_name': self.subsection1.display_name,
                     'graded': False,
-                    'module_id': text_type(self.subsection1.location),
+                    'module_id': str(self.subsection1.location),
                     'short_label': None
                 },
                 {
                     'assignment_type': None,
                     'display_name': self.subsection2.display_name,
                     'graded': False,
-                    'module_id': text_type(self.subsection2.location),
+                    'module_id': str(self.subsection2.location),
                     'short_label': None
                 },
                 {
                     'assignment_type': 'Homework',
                     'display_name': self.homework.display_name,
                     'graded': True,
-                    'module_id': text_type(self.homework.location),
+                    'module_id': str(self.homework.location),
                     'short_label': 'HW 01',
                 },
                 {
                     'assignment_type': 'Midterm Exam',
                     'display_name': self.midterm.display_name,
                     'graded': True,
-                    'module_id': text_type(self.midterm.location),
+                    'module_id': str(self.midterm.location),
                     'short_label': 'Midterm 01',
                 },
             ],
@@ -243,7 +251,7 @@ class GradebookViewTestBase(GradeViewTestMixin, APITestCase):
     """
     @classmethod
     def setUpClass(cls):
-        super(GradebookViewTestBase, cls).setUpClass()
+        super().setUpClass()
         cls.namespaced_url = 'grades_api:v1:course_gradebook'
         cls.waffle_flag = waffle_flags()[WRITABLE_GRADEBOOK]
 
@@ -362,7 +370,7 @@ class GradebookViewTest(GradebookViewTestBase):
     """
     @classmethod
     def setUpClass(cls):
-        super(GradebookViewTest, cls).setUpClass()
+        super().setUpClass()
         cls.mock_subsection_grades = {
             cls.subsections[cls.chapter_1.location][0].location: cls.mock_subsection_grade(
                 cls.subsections[cls.chapter_1.location][0],
@@ -398,11 +406,11 @@ class GradebookViewTest(GradebookViewTestBase):
         """
         Helper function to create the course gradebook API read url.
         """
-        base_url = super(GradebookViewTest, self).get_url(course_key)  # lint-amnesty, pylint: disable=super-with-arguments
+        base_url = super().get_url(course_key)
         if username:
-            return "{0}?username={1}".format(base_url, username)
+            return f"{base_url}?username={username}"
         if user_contains:
-            return "{0}?user_contains={1}".format(base_url, user_contains)
+            return f"{base_url}?user_contains={user_contains}"
         return base_url
 
     @staticmethod
@@ -433,7 +441,7 @@ class GradebookViewTest(GradebookViewTestBase):
                 ('attempted', True),
                 ('category', 'Homework'),
                 ('label', 'HW 01'),
-                ('module_id', text_type(self.subsections[self.chapter_1.location][0].location)),
+                ('module_id', str(self.subsections[self.chapter_1.location][0].location)),
                 ('percent', 0.5),
                 ('score_earned', 1.0),
                 ('score_possible', 2.0),
@@ -443,7 +451,7 @@ class GradebookViewTest(GradebookViewTestBase):
                 ('attempted', True),
                 ('category', 'Lab'),
                 ('label', 'Lab 01'),
-                ('module_id', text_type(self.subsections[self.chapter_1.location][1].location)),
+                ('module_id', str(self.subsections[self.chapter_1.location][1].location)),
                 ('percent', 0.5),
                 ('score_earned', 1.0),
                 ('score_possible', 2.0),
@@ -453,7 +461,7 @@ class GradebookViewTest(GradebookViewTestBase):
                 ('attempted', True),
                 ('category', 'Homework'),
                 ('label', 'HW 02'),
-                ('module_id', text_type(self.subsections[self.chapter_2.location][0].location)),
+                ('module_id', str(self.subsections[self.chapter_2.location][0].location)),
                 ('percent', 0.5),
                 ('score_earned', 1.0),
                 ('score_possible', 2.0),
@@ -463,7 +471,7 @@ class GradebookViewTest(GradebookViewTestBase):
                 ('attempted', True),
                 ('category', 'Lab'),
                 ('label', 'Lab 02'),
-                ('module_id', text_type(self.subsections[self.chapter_2.location][1].location)),
+                ('module_id', str(self.subsections[self.chapter_2.location][1].location)),
                 ('percent', 0.5),
                 ('score_earned', 1.0),
                 ('score_possible', 2.0),
@@ -916,7 +924,7 @@ class GradebookViewTest(GradebookViewTestBase):
                 getattr(self, login_method)()
                 # both of our test users are in the audit track, so this is functionally equivalent
                 # to just `?cohort_id=cohort.id`.
-                query = '?cohort_id={}&enrollment_mode={}'.format(cohort.id, CourseMode.AUDIT)
+                query = f'?cohort_id={cohort.id}&enrollment_mode={CourseMode.AUDIT}'
                 resp = self.client.get(
                     self.get_url(course_key=self.course.id) + query
                 )
@@ -952,7 +960,7 @@ class GradebookViewTest(GradebookViewTestBase):
             with override_waffle_flag(self.waffle_flag, active=True):
                 getattr(self, login_method)()
                 resp = self.client.get(
-                    self.get_url(course_key=self.course.id) + '?cohort_id={}'.format(empty_cohort.id)
+                    self.get_url(course_key=self.course.id) + f'?cohort_id={empty_cohort.id}'
                 )
                 self._assert_empty_response(resp)
 
@@ -981,7 +989,7 @@ class GradebookViewTest(GradebookViewTestBase):
             with override_waffle_flag(self.waffle_flag, active=True):
                 getattr(self, login_method)()
                 resp = self.client.get(
-                    self.get_url(course_key=self.course.id) + '?enrollment_mode={}'.format(CourseMode.AUDIT)
+                    self.get_url(course_key=self.course.id) + f'?enrollment_mode={CourseMode.AUDIT}'
                 )
 
                 self._assert_data_all_users(resp)
@@ -1006,7 +1014,7 @@ class GradebookViewTest(GradebookViewTestBase):
             with override_waffle_flag(self.waffle_flag, active=True):
                 getattr(self, login_method)()
                 resp = self.client.get(
-                    self.get_url(course_key=self.course.id) + '?enrollment_mode={}'.format(CourseMode.VERIFIED)
+                    self.get_url(course_key=self.course.id) + f'?enrollment_mode={CourseMode.VERIFIED}'
                 )
                 self._assert_empty_response(resp)
 
@@ -1028,14 +1036,14 @@ class GradebookViewTest(GradebookViewTestBase):
                 self.login_staff()
                 query = ''
                 if page_size:
-                    query = '?page_size={}'.format(page_size)
+                    query = f'?page_size={page_size}'
                 resp = self.client.get(
                     self.get_url(course_key=self.course.id) + query
                 )
                 assert status.HTTP_200_OK == resp.status_code
                 actual_data = dict(resp.data)
                 expected_page_size = page_size or CourseEnrollmentPagination.page_size
-                if expected_page_size > user_size:
+                if expected_page_size > user_size:  # lint-amnesty, pylint: disable=consider-using-min-builtin
                     expected_page_size = user_size
                 assert len(actual_data['results']) == expected_page_size
 
@@ -1281,6 +1289,142 @@ class GradebookViewTest(GradebookViewTestBase):
                 assert actual_data['total_users_count'] == num_enrollments
                 assert actual_data['filtered_users_count'] == num_enrollments
 
+    @contextmanager
+    def _mock_all_course_grade_reads(self, percent=0.9):
+        """
+        A context manager for mocking CourseGradeFactory.read and returning the same grade for all learners.
+        """
+        # pylint: disable=unused-argument
+        def fake_course_grade_read(*args, **kwargs):
+            return self.mock_course_grade(kwargs['user'], passed=True, percent=percent)
+
+        with patch('lms.djangoapps.grades.course_grade_factory.CourseGradeFactory.read') as mock_read:
+            mock_read.side_effect = fake_course_grade_read
+            yield
+
+    def _assert_usernames(self, response, expected_usernames):
+        """ Helper method to assert that the expected users were returned from the endpoint """
+        assert status.HTTP_200_OK == response.status_code
+        response_data = dict(response.data)
+        actual_usernames = [row['username'] for row in response_data['results']]
+        assert set(actual_usernames) == set(expected_usernames)
+
+    def test_users_with_course_roles(self):
+        """ Test that a staff member erolled in the course will be included in grade results. """
+        # This function creates and enrolls a course staff (not global staff) user
+        staff_user = self.login_course_staff()
+        with override_waffle_flag(self.waffle_flag, active=True):
+            with self._mock_all_course_grade_reads():
+                response = self.client.get(self.get_url(course_key=self.course.id))
+        course_students = [
+            self.student.username,
+            self.other_student.username,
+            self.program_student.username,
+            self.program_masters_student.username
+        ]
+        self._assert_usernames(
+            response,
+            course_students + [staff_user.username]
+        )
+
+    @ddt.data(
+        None,
+        [],
+        ['all'],
+        [CourseInstructorRole.ROLE, CourseBetaTesterRole.ROLE, CourseCcxCoachRole.ROLE],
+        [CourseInstructorRole.ROLE, 'all'],
+        [CourseBetaTesterRole.ROLE, 'nonexistant-role'],
+        [
+            CourseInstructorRole.ROLE,
+            CourseStaffRole.ROLE,
+            CourseBetaTesterRole.ROLE,
+            CourseCcxCoachRole.ROLE,
+            CourseDataResearcherRole.ROLE
+        ],
+    )
+    def test_filter_course_roles(self, excluded_course_roles):
+        """ Test that excluded_course_roles=all filters out any user with a course role """
+        # Create test users, enroll them in the course, and give them roles.
+        role_user_usernames = dict()
+        course_roles_to_create = [
+            CourseInstructorRole,
+            CourseStaffRole,
+            CourseBetaTesterRole,
+            CourseCcxCoachRole,
+            CourseDataResearcherRole,
+        ]
+        for role in course_roles_to_create:
+            user = UserFactory.create(username="test_filter_course_roles__" + role.ROLE)
+            role(self.course.id).add_users(user)
+            self._create_user_enrollments(user)
+            role_user_usernames[role.ROLE] = user.username
+
+        # This will create global staff and not enroll them in the course
+        self.login_staff()
+        with self._mock_all_course_grade_reads():
+            with override_waffle_flag(self.waffle_flag, active=True):
+                response = self.client.get(
+                    self.get_url(course_key=self.course.id),
+                    {'excluded_course_roles': excluded_course_roles} if excluded_course_roles is not None else {}
+                )
+
+        expected_usernames = [
+            self.student.username,
+            self.other_student.username,
+            self.program_student.username,
+            self.program_masters_student.username,
+        ]
+        if not excluded_course_roles:
+            # Don't filter out any course roles
+            expected_usernames += list(role_user_usernames.values())
+        elif 'all' in excluded_course_roles:
+            # Filter out every course role
+            pass
+        else:
+            # Filter out some number of course roles
+            for role, username in role_user_usernames.items():
+                if role not in excluded_course_roles:
+                    expected_usernames.append(username)
+
+        self._assert_usernames(response, expected_usernames)
+
+    @ddt.data(False, True)
+    def test_exclude_course_roles_for_another_course(self, other_student_role_in_self_course):
+        """
+        Test for filtering errors when users have roles in other courses.
+        """
+        # Conditionally make other_student a beta tester (arbitrary role) in self.course
+        if other_student_role_in_self_course:
+            CourseBetaTesterRole(self.course.id).add_users(self.other_student)
+
+        # Create another course, enroll other_student, and make other_student course staff in other course
+        another_course = CourseFactory.create(display_name='another-course', run='run-1')
+        CourseEnrollmentFactory(
+            course_id=another_course.id,
+            user=self.other_student,
+        )
+        CourseStaffRole(another_course.id).add_users(self.other_student)
+
+        # Query the gradebook view for self.course, excluding staff.
+        # other_student is staff in another-course, not self.course, so
+        # they should still be included.
+        self.login_staff()
+        with self._mock_all_course_grade_reads():
+            with override_waffle_flag(self.waffle_flag, active=True):
+                response = self.client.get(
+                    self.get_url(course_key=self.course.id),
+                    {'excluded_course_roles': CourseStaffRole.ROLE}
+                )
+        self._assert_usernames(
+            response,
+            [
+                self.student.username,
+                self.other_student.username,
+                self.program_student.username,
+                self.program_masters_student.username,
+            ]
+        )
+
 
 @ddt.ddt
 class GradebookBulkUpdateViewTest(GradebookViewTestBase):
@@ -1289,7 +1433,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
     """
     @classmethod
     def setUpClass(cls):
-        super(GradebookBulkUpdateViewTest, cls).setUpClass()
+        super().setUpClass()
         cls.namespaced_url = 'grades_api:v1:course_gradebook_bulk_update'
 
     def test_feature_not_enabled(self):
@@ -1334,7 +1478,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
                 post_data = [
                     {
                         'user_id': self.student.id,
-                        'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                        'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                         'grade': {},  # doesn't matter what we put here.
                     }
                 ]
@@ -1358,7 +1502,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             post_data = [
                 {
                     'user_id': unenrolled_student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                     'grade': {},  # doesn't matter what we put here.
                 }
             ]
@@ -1372,7 +1516,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             expected_data = [
                 {
                     'user_id': unenrolled_student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                     'success': False,
                     'reason': 'CourseEnrollment matching query does not exist.',
                 },
@@ -1391,7 +1535,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             post_data = [
                 {
                     'user_id': -123,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                     'grade': {},  # doesn't matter what we put here.
                 }
             ]
@@ -1405,7 +1549,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             expected_data = [
                 {
                     'user_id': -123,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                     'success': False,
                     'reason': 'User matching query does not exist.',
                 },
@@ -1478,7 +1622,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
                     'user_id': self.student.id,
                     'usage_id': usage_id,
                     'success': False,
-                    'reason': 'usage_key {} does not exist in this course.'.format(usage_id),
+                    'reason': f'usage_key {usage_id} does not exist in this course.',
                 },
             ]
             assert status.HTTP_422_UNPROCESSABLE_ENTITY == resp.status_code
@@ -1495,7 +1639,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             post_data = [
                 {
                     'user_id': self.student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                     'grade': {
                         'earned_all_override': 3,
                         'possible_all_override': 3,
@@ -1505,7 +1649,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
                 },
                 {
                     'user_id': self.student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][1].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][1].location),
                     'grade': {
                         'earned_all_override': 1,
                         'possible_all_override': 4,
@@ -1524,13 +1668,13 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             expected_data = [
                 {
                     'user_id': self.student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                     'success': True,
                     'reason': None,
                 },
                 {
                     'user_id': self.student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][1].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][1].location),
                     'success': True,
                     'reason': None,
                 },
@@ -1541,7 +1685,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             second_post_data = [
                 {
                     'user_id': self.student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][1].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][1].location),
                     'grade': {
                         'earned_all_override': 3,
                         'possible_all_override': 4,
@@ -1601,7 +1745,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
             post_data = [
                 {
                     'user_id': self.student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][0].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][0].location),
                     'grade': {
                         'earned_all_override': 0,
                         'possible_all_override': 3,
@@ -1611,7 +1755,7 @@ class GradebookBulkUpdateViewTest(GradebookViewTestBase):
                 },
                 {
                     'user_id': self.student.id,
-                    'usage_id': text_type(self.subsections[self.chapter_1.location][1].location),
+                    'usage_id': str(self.subsections[self.chapter_1.location][1].location),
                     'grade': {
                         'earned_all_override': 0,
                         'possible_all_override': 4,
@@ -1635,7 +1779,7 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
     """ Test for the audit api call """
     @classmethod
     def setUpClass(cls):
-        super(SubsectionGradeViewTest, cls).setUpClass()
+        super().setUpClass()
         cls.namespaced_url = 'grades_api:v1:course_grade_overrides'
         cls.locator_a = BlockUsageLocator(
             course_key=cls.course_key,
@@ -1677,7 +1821,7 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
                 'subsection_id': subsection_id or self.subsection_id,
             }
         )
-        return "{0}?user_id={1}".format(base_url, user_id or self.user_id)
+        return f"{base_url}?user_id={user_id or self.user_id}"
 
     @patch('lms.djangoapps.grades.subsection_grade_factory.SubsectionGradeFactory.create')
     @ddt.data(
@@ -1722,8 +1866,8 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
             ]),
             'user_id': user_no_grade.id,
             'override': None,
-            'course_id': text_type(self.usage_key.course_key),
-            'subsection_id': text_type(self.usage_key),
+            'course_id': str(self.usage_key.course_key),
+            'subsection_id': str(self.usage_key),
             'history': []
         }
         assert expected_data == resp.data
@@ -1750,8 +1894,8 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
             ]),
             'user_id': self.user_id,
             'override': None,
-            'course_id': text_type(self.course_key),
-            'subsection_id': text_type(self.usage_key),
+            'course_id': str(self.course_key),
+            'subsection_id': str(self.usage_key),
             'history': []
         }
 
@@ -1793,8 +1937,8 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
                 ('earned_graded_override', 0.0),
                 ('possible_graded_override', 8.0)
             ]),
-            'course_id': text_type(self.course_key),
-            'subsection_id': text_type(self.usage_key),
+            'course_id': str(self.course_key),
+            'subsection_id': str(self.usage_key),
             'history': [OrderedDict([
                 ('created', '2019-01-01T00:00:00Z'),
                 ('grade_id', 1),
@@ -1804,7 +1948,7 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
                 ('override_reason', None),
                 ('system', None),
                 ('history_date', '2019-01-01T00:00:00Z'),
-                ('history_type', u'+'),
+                ('history_type', '+'),
                 ('history_user', None),
                 ('history_user_id', None),
                 ('id', 1),
@@ -1851,8 +1995,8 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
                 ('earned_graded_override', 0.0),
                 ('possible_graded_override', 8.0)
             ]),
-            'course_id': text_type(self.course_key),
-            'subsection_id': text_type(self.usage_key),
+            'course_id': str(self.course_key),
+            'subsection_id': str(self.usage_key),
             'history': [OrderedDict([
                 ('created', '2019-01-01T00:00:00Z'),
                 ('grade_id', 1),
@@ -1862,7 +2006,7 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
                 ('override_reason', None),
                 ('system', None),
                 ('history_date', '2019-01-01T00:00:00Z'),
-                ('history_type', u'+'),
+                ('history_type', '+'),
                 ('history_user', self.global_staff.username),
                 ('history_user_id', self.global_staff.id),
                 ('id', 1),
@@ -1948,8 +2092,8 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
             ]),
             'user_id': other_user.id,
             'override': None,
-            'course_id': text_type(self.usage_key.course_key),
-            'subsection_id': text_type(self.usage_key),
+            'course_id': str(self.usage_key.course_key),
+            'subsection_id': str(self.usage_key),
             'history': []
         }
 
@@ -1991,8 +2135,8 @@ class SubsectionGradeViewTest(GradebookViewTestBase):
             ]),
             'user_id': self.user_id,
             'override': None,
-            'course_id': text_type(self.usage_key.course_key),
-            'subsection_id': text_type(unreleased_subsection.location),
+            'course_id': str(self.usage_key.course_key),
+            'subsection_id': str(unreleased_subsection.location),
             'history': []
         }
         assert expected_data == resp.data

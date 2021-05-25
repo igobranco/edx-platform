@@ -14,9 +14,9 @@ from wiki.core.exceptions import NoRootURL
 from wiki.models import Article, URLPath
 
 from lms.djangoapps.course_wiki.utils import course_wiki_slug
-from lms.djangoapps.courseware.courses import get_course_by_id
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 from openedx.core.djangolib.markup import Text
+from openedx.core.lib.courses import get_course_by_id
 from openedx.features.enterprise_support.api import data_sharing_consent_required
 
 log = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ def course_wiki_redirect(request, course_id, wiki_path=""):
 
         content = Text(
             # Translators: this string includes wiki markup.  Leave the ** and the _ alone.
-            _(u"This is the wiki for **{organization}**'s _{course_name}_.")
+            _("This is the wiki for **{organization}**'s _{course_name}_.")
         ).format(
             organization=course.display_org_with_default,
             course_name=course.display_name_with_default,
@@ -115,7 +115,7 @@ def get_or_create_root():
         pass
 
     starting_content = "\n".join((
-        _(u"Welcome to the {platform_name} Wiki").format(
+        _("Welcome to the {platform_name} Wiki").format(
             platform_name=configuration_helpers.get_value('PLATFORM_NAME', settings.PLATFORM_NAME),
         ),
         "===",

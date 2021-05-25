@@ -5,7 +5,6 @@ Utility functions for working with discounts and discounted pricing.
 from datetime import datetime
 
 import pytz
-import six
 from django.utils.translation import get_language
 from django.utils.translation import ugettext as _
 from edx_django_utils.cache import RequestCache
@@ -43,7 +42,7 @@ def offer_banner_wrapper(user, block, view, frag, context):  # pylint: disable=W
     # Course content must be escaped to render correctly due to the way the
     # way the XBlock rendering works. Transforming the safe markup to unicode
     # escapes correctly.
-    offer_banner_fragment.content = six.text_type(offer_banner_fragment.content)
+    offer_banner_fragment.content = str(offer_banner_fragment.content)
 
     offer_banner_fragment.add_content(frag.content)
     offer_banner_fragment.add_fragment_resources(frag)
@@ -69,9 +68,9 @@ def _get_discount_prices(user, course, assume_discount=False):
         discounted_price = base_price * ((100.0 - percentage) / 100)
         if discounted_price:  # leave 0 prices alone, as format_course_price below will adjust to 'Free'
             if discounted_price == int(discounted_price):
-                discounted_price = '{:0.0f}'.format(discounted_price)
+                discounted_price = f'{discounted_price:0.0f}'
             else:
-                discounted_price = '{:0.2f}'.format(discounted_price)
+                discounted_price = f'{discounted_price:0.2f}'
 
         return format_course_price(base_price), format_course_price(discounted_price), percentage
     else:
@@ -215,7 +214,7 @@ def get_first_purchase_offer_banner_fragment_from_key(user, course_key):
     shouldn't show a first purchase offer message for this user.
     """
     request_cache = RequestCache('get_first_purchase_offer_banner_fragment_from_key')
-    cache_key = 'html:{},{}'.format(user.id, course_key)
+    cache_key = f'html:{user.id},{course_key}'
     cache_response = request_cache.get_cached_response(cache_key)
     if cache_response.is_found:
         cached_html = cache_response.value

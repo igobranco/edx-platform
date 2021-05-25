@@ -2,16 +2,13 @@
 Unit Tests for the Certificate service
 """
 
-from edx_toggles.toggles.testutils import override_waffle_flag
-from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
-from xmodule.modulestore.tests.factories import CourseFactory
 
 from common.djangoapps.student.tests.factories import UserFactory
-from lms.djangoapps.certificates.generation_handler import CERTIFICATES_USE_ALLOWLIST
 from lms.djangoapps.certificates.models import CertificateStatuses, GeneratedCertificate
 from lms.djangoapps.certificates.services import CertificateService
-from lms.djangoapps.certificates.tests.factories import CertificateWhitelistFactory
-from lms.djangoapps.certificates.tests.factories import GeneratedCertificateFactory
+from lms.djangoapps.certificates.tests.factories import CertificateAllowlistFactory, GeneratedCertificateFactory
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
+from xmodule.modulestore.tests.factories import CourseFactory
 
 
 class CertificateServiceTests(ModuleStoreTestCase):
@@ -59,7 +56,7 @@ class CertificateServiceTests(ModuleStoreTestCase):
         self.assertDictEqual(
             self.generated_certificate_to_dict(invalid_generated_certificate),
             {
-                'verify_uuid': '',
+                'verify_uuid': invalid_generated_certificate.verify_uuid,
                 'download_uuid': '',
                 'download_url': '',
                 'grade': '',
@@ -67,7 +64,6 @@ class CertificateServiceTests(ModuleStoreTestCase):
             }
         )
 
-    @override_waffle_flag(CERTIFICATES_USE_ALLOWLIST, active=True)
     def test_invalidate_certificate_allowlist(self):
         """
         Verify that CertificateService does not invalidate the certificate if it is allowlisted
@@ -81,7 +77,7 @@ class CertificateServiceTests(ModuleStoreTestCase):
             course_id=course_key,
             grade=1.0
         )
-        CertificateWhitelistFactory(
+        CertificateAllowlistFactory(
             user=u,
             course_id=course_key
         )

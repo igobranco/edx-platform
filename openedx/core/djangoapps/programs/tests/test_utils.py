@@ -1,24 +1,22 @@
 """Tests covering Programs utilities."""
 
-
 import datetime
 import json
 import uuid
 from collections import namedtuple
 from copy import deepcopy
+from unittest import mock
 
 import ddt
+from edx_toggles.toggles import LegacyWaffleSwitch
+from edx_toggles.toggles.testutils import override_waffle_switch
 import httpretty
-import mock
-import six
-from six.moves import range
 from django.conf import settings
 from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 from pytz import utc
 from testfixtures import LogCapture
-from waffle.testutils import override_switch
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.course_modes.tests.factories import CourseModeFactory
@@ -36,6 +34,8 @@ from openedx.core.djangoapps.catalog.tests.factories import (
     SeatFactory,
     generate_course_run_key
 )
+from openedx.core.djangoapps.certificates.config import waffle
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.programs import ALWAYS_CALCULATE_PROGRAM_PRICE_AS_ANONYMOUS_USER
 from openedx.core.djangoapps.programs.tests.factories import ProgressFactory
 from openedx.core.djangoapps.programs.utils import (
@@ -60,16 +60,18 @@ from xmodule.modulestore.tests.factories import CourseFactory as ModuleStoreCour
 ECOMMERCE_URL_ROOT = 'https://ecommerce.example.com'
 UTILS_MODULE = 'openedx.core.djangoapps.programs.utils'
 LOGGER_NAME = 'openedx.core.djangoapps.programs.utils'
+AUTO_CERTIFICATE_GENERATION_SWITCH = LegacyWaffleSwitch(waffle.waffle(), waffle.AUTO_CERTIFICATE_GENERATION)  # pylint: disable=toggle-missing-annotation
 
 
 @ddt.ddt
 @skip_unless_lms
+@override_waffle_switch(AUTO_CERTIFICATE_GENERATION_SWITCH, active=True)
 @mock.patch(UTILS_MODULE + '.get_programs')
-class TestProgramProgressMeter(TestCase):
+class TestProgramProgressMeter(ModuleStoreTestCase):
     """Tests of the program progress utility class."""
 
     def setUp(self):
-        super(TestProgramProgressMeter, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.user = UserFactory()
         self.site = SiteFactory()
@@ -91,7 +93,7 @@ class TestProgramProgressMeter(TestCase):
 
     def _assert_progress(self, meter, *progresses):
         """Variadic helper used to verify progress calculations."""
-        self.assertEqual(meter.progress(), list(progresses))
+        assert meter.progress() == list(progresses)
 
     def _attach_detail_url(self, programs):
         """Add expected detail URLs to a list of program dicts."""
@@ -105,9 +107,9 @@ class TestProgramProgressMeter(TestCase):
 
         meter = ProgramProgressMeter(self.site, self.user)
 
-        self.assertEqual(meter.engaged_programs, [])
+        assert meter.engaged_programs == []
         self._assert_progress(meter)
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
     def test_enrollments_but_no_programs(self, mock_get_programs):
         """Verify behavior when enrollments exist, but no matching programs do."""
@@ -117,9 +119,9 @@ class TestProgramProgressMeter(TestCase):
         self._create_enrollments(course_run_id)
         meter = ProgramProgressMeter(self.site, self.user)
 
-        self.assertEqual(meter.engaged_programs, [])
+        assert meter.engaged_programs == []
         self._assert_progress(meter)
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
     def test_entitlements_but_no_programs(self, mock_get_programs):
         """ Verify engaged_programs is empty when entitlements exist, but no matching programs do. """
@@ -128,7 +130,7 @@ class TestProgramProgressMeter(TestCase):
         self._create_entitlements(uuid.uuid4())
         meter = ProgramProgressMeter(self.site, self.user)
 
-        self.assertEqual(meter.engaged_programs, [])
+        assert meter.engaged_programs == []
 
     def test_single_program_enrollment(self, mock_get_programs):
         """
@@ -153,12 +155,12 @@ class TestProgramProgressMeter(TestCase):
 
         self._attach_detail_url(data)
         program = data[0]
-        self.assertEqual(meter.engaged_programs, [program])
+        assert meter.engaged_programs == [program]
         self._assert_progress(
             meter,
             ProgressFactory(uuid=program['uuid'], in_progress=1)
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
     def test_single_program_entitlement(self, mock_get_programs):
         """
@@ -177,7 +179,7 @@ class TestProgramProgressMeter(TestCase):
 
         self._attach_detail_url(data)
         program = data[0]
-        self.assertEqual(meter.engaged_programs, [program])
+        assert meter.engaged_programs == [program]
 
     def test_single_program_multiple_entitlements(self, mock_get_programs):
         """
@@ -221,11 +223,11 @@ class TestProgramProgressMeter(TestCase):
 
         meter = ProgramProgressMeter(self.site, self.user)
         self._attach_detail_url(data)
-        self.assertEqual(len(meter.entitlements), 1)
+        assert len(meter.entitlements) == 1
 
         entitlement = meter.entitlements[0]
-        self.assertIsNone(entitlement.expired_at)
-        self.assertEqual(entitlement.enrollment_course_run.course_id, enrollment2.course_id)
+        assert entitlement.expired_at is None
+        assert entitlement.enrollment_course_run.course_id == enrollment2.course_id
 
     def test_course_progress(self, mock_get_programs):
         """
@@ -258,7 +260,7 @@ class TestProgramProgressMeter(TestCase):
             )
         ]
 
-        self.assertEqual(meter.progress(count_only=False), expected)
+        assert meter.progress(count_only=False) == expected
 
     def test_no_id_professional_in_progress(self, mock_get_programs):
         """
@@ -294,7 +296,7 @@ class TestProgramProgressMeter(TestCase):
             )
         ]
 
-        self.assertEqual(meter.progress(count_only=False), expected)
+        assert meter.progress(count_only=False) == expected
 
     @ddt.data(None, 1, -1)
     def test_in_progress_course_upgrade_deadline_check(self, offset, mock_get_programs):
@@ -335,7 +337,7 @@ class TestProgramProgressMeter(TestCase):
             )
         ]
 
-        self.assertEqual(meter.progress(count_only=True), expected)
+        assert meter.progress(count_only=True) == expected
 
     def test_multiple_program_enrollment(self, mock_get_programs):
         """
@@ -369,13 +371,13 @@ class TestProgramProgressMeter(TestCase):
 
         self._attach_detail_url(data)
         programs = data[:2]
-        self.assertEqual(meter.engaged_programs, programs)
+        assert meter.engaged_programs == programs
 
         self._assert_progress(
             meter,
             *(ProgressFactory(uuid=program['uuid'], in_progress=1) for program in programs)
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
     def test_multiple_program_entitlement(self, mock_get_programs):
         """
@@ -397,7 +399,7 @@ class TestProgramProgressMeter(TestCase):
 
         self._attach_detail_url(data)
         programs = data[:2]
-        self.assertEqual(meter.engaged_programs, programs)
+        assert meter.engaged_programs == programs
 
     def test_shared_enrollment_engagement(self, mock_get_programs):
         """
@@ -437,13 +439,13 @@ class TestProgramProgressMeter(TestCase):
 
         self._attach_detail_url(data)
         programs = data[:3]
-        self.assertEqual(meter.engaged_programs, programs)
+        assert meter.engaged_programs == programs
 
         self._assert_progress(
             meter,
             *(ProgressFactory(uuid=program['uuid'], in_progress=1) for program in programs)
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
     def test_shared_entitlement_engagement(self, mock_get_programs):
         """
@@ -471,11 +473,36 @@ class TestProgramProgressMeter(TestCase):
 
         self._attach_detail_url(data)
         programs = data[:3]
-        self.assertEqual(meter.engaged_programs, programs)
+        assert meter.engaged_programs == programs
 
-    def test_simulate_progress(self, mock_get_programs):
+    def test_simulate_progress(self, mock_get_programs):  # lint-amnesty, pylint: disable=too-many-statements
         """Simulate the entirety of a user's progress through a program."""
-        first_course_run_key, second_course_run_key = (generate_course_run_key() for __ in range(2))
+        today = datetime.datetime.now(utc)
+        two_days_ago = today - datetime.timedelta(days=2)
+        three_days_ago = today - datetime.timedelta(days=3)
+        yesterday = today - datetime.timedelta(days=1)
+        tomorrow = today + datetime.timedelta(days=1)
+        course1 = ModuleStoreCourseFactory.create(
+            start=yesterday,
+            end=tomorrow,
+            self_paced=True,
+        )
+        first_course_run_key = str(course1.id)
+        course2 = ModuleStoreCourseFactory.create(
+            start=yesterday,
+            end=tomorrow,
+            self_paced=True,
+        )
+        second_course_run_key = str(course2.id)
+        course3 = ModuleStoreCourseFactory.create(
+            start=three_days_ago,
+            end=two_days_ago,
+            self_paced=False,
+            certificate_available_date=tomorrow,
+            certificates_display_behavior='end'
+        )
+        third_course_run_key = str(course3.id)
+
         data = [
             ProgramFactory(
                 courses=[
@@ -484,6 +511,9 @@ class TestProgramProgressMeter(TestCase):
                     ]),
                     CourseFactory(course_runs=[
                         CourseRunFactory(key=second_course_run_key),
+                    ]),
+                    CourseFactory(course_runs=[
+                        CourseRunFactory(key=third_course_run_key),
                     ]),
                 ]
             ),
@@ -494,7 +524,7 @@ class TestProgramProgressMeter(TestCase):
         # No enrollments, no programs in progress.
         meter = ProgramProgressMeter(self.site, self.user)
         self._assert_progress(meter)
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
         # One enrollment, one program in progress.
         self._create_enrollments(first_course_run_key)
@@ -502,21 +532,22 @@ class TestProgramProgressMeter(TestCase):
         _, program_uuid = data[0], data[0]['uuid']
         self._assert_progress(
             meter,
-            ProgressFactory(uuid=program_uuid, in_progress=1, not_started=1)
+            ProgressFactory(uuid=program_uuid, in_progress=1, not_started=2)
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
-        # Two enrollments, all courses in progress.
+        # 3 enrollments, 3 courses in progress.
         self._create_enrollments(second_course_run_key)
+        self._create_enrollments(third_course_run_key)
         meter = ProgramProgressMeter(self.site, self.user)
         self._assert_progress(
             meter,
             ProgressFactory(
                 uuid=program_uuid,
-                in_progress=2,
+                in_progress=3,
             )
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
         # One valid certificate earned, one course complete.
         self._create_certificates(first_course_run_key, mode=MODES.verified)
@@ -526,10 +557,10 @@ class TestProgramProgressMeter(TestCase):
             ProgressFactory(
                 uuid=program_uuid,
                 completed=1,
-                in_progress=1,
+                in_progress=2,
             )
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
         # Invalid certificate earned, still one course to complete. (invalid because mode doesn't match the course)
         second_cert = self._create_certificates(second_course_run_key, mode=MODES.honor)[0]
@@ -540,12 +571,12 @@ class TestProgramProgressMeter(TestCase):
             ProgressFactory(
                 uuid=program_uuid,
                 completed=1,
-                in_progress=1,
+                in_progress=2,
             )
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
-        # Second valid certificate obtained, all courses complete.
+        # Second valid certificate obtained, 2 courses complete.
         second_cert.mode = MODES.verified
         second_cert.save()
         meter = ProgramProgressMeter(self.site, self.user)
@@ -554,25 +585,58 @@ class TestProgramProgressMeter(TestCase):
             ProgressFactory(
                 uuid=program_uuid,
                 completed=2,
+                in_progress=1,
             )
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [program_uuid])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
+
+        # 3 certs, 1 unavailable, Program available in the future
+        self._create_certificates(third_course_run_key, mode=MODES.verified)
+        meter = ProgramProgressMeter(self.site, self.user)
+        self._assert_progress(
+            meter,
+            ProgressFactory(
+                uuid=program_uuid,
+                completed=2,
+                in_progress=1,
+            )
+        )
+        assert list(meter.completed_programs_with_available_dates.keys()) == [program_uuid]
+        assert meter.completed_programs_with_available_dates[program_uuid] > today
+
+        # 3 certs, all available, program cert in the past/now
+        course3_overview = CourseOverview.get_from_id(course3.id)
+        course3_overview.certificate_available_date = yesterday
+        course3_overview.save()
+        meter = ProgramProgressMeter(self.site, self.user)
+        self._assert_progress(
+            meter,
+            ProgressFactory(
+                uuid=program_uuid,
+                completed=3,
+            )
+        )
+        assert list(meter.completed_programs_with_available_dates.keys()) == [program_uuid]
+        assert meter.completed_programs_with_available_dates[program_uuid].date() == today.date()
 
     def test_nonverified_course_run_completion(self, mock_get_programs):
         """
         Course runs aren't necessarily of type verified. Verify that a program can
         still be completed when this is the case.
         """
-        course_run_key = generate_course_run_key()
+        course1 = ModuleStoreCourseFactory.create(self_paced=True, )
+        course_run_key = str(course1.id)
+        course2 = ModuleStoreCourseFactory.create(self_paced=True, )
+        program = ProgramFactory(
+            courses=[
+                CourseFactory(course_runs=[
+                    CourseRunFactory(key=course_run_key, type='honor'),
+                    CourseRunFactory(key=str(course2.id)),
+                ]),
+            ]
+        )
         data = [
-            ProgramFactory(
-                courses=[
-                    CourseFactory(course_runs=[
-                        CourseRunFactory(key=course_run_key, type='honor'),
-                        CourseRunFactory(),
-                    ]),
-                ]
-            ),
+            program,
             ProgramFactory(),
         ]
         mock_get_programs.return_value = data
@@ -581,12 +645,12 @@ class TestProgramProgressMeter(TestCase):
         self._create_certificates(course_run_key)
         meter = ProgramProgressMeter(self.site, self.user)
 
-        _, program_uuid = data[0], data[0]['uuid']
+        program_uuid = program['uuid']
         self._assert_progress(
             meter,
             ProgressFactory(uuid=program_uuid, completed=1)
         )
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [program_uuid])
+        assert list(meter.completed_programs_with_available_dates.keys()) == [program_uuid]
 
     @mock.patch(UTILS_MODULE + '.available_date_for_certificate')
     def test_completed_programs_with_available_dates(self, mock_available_date_for_certificate, mock_get_programs):
@@ -625,6 +689,7 @@ class TestProgramProgressMeter(TestCase):
             if str(cert.course_id) == run_course2['key']:
                 return datetime.datetime(2016, 1, 1)
             return datetime.datetime(2015, 1, 1)
+
         mock_available_date_for_certificate.side_effect = available_date_fake
 
         meter = ProgramProgressMeter(self.site, self.user)
@@ -637,26 +702,32 @@ class TestProgramProgressMeter(TestCase):
         """
         Verify that the method can find course run certificates when not mocked out.
         """
-        downloadable = CourseRunFactory()
-        generating = CourseRunFactory()
+        downloadable_module_store_course = ModuleStoreCourseFactory.create(self_paced=True, )
+        downloadable = CourseRunFactory(key=downloadable_module_store_course.id)
+        course_availability_in_future = CourseRunFactory()
+        generating_module_store_course = ModuleStoreCourseFactory.create(self_paced=True, )
+        generating = CourseRunFactory(key=generating_module_store_course.id)
         unknown = CourseRunFactory()
-        course = CourseFactory(course_runs=[downloadable, generating, unknown])
+        course = CourseFactory(course_runs=[downloadable, course_availability_in_future, generating, unknown])
         program = ProgramFactory(courses=[course])
         mock_get_programs.return_value = [program]
 
-        self._create_enrollments(downloadable['key'], generating['key'], unknown['key'])
+        self._create_enrollments(
+            downloadable['key'],
+            generating['key'],
+            unknown['key']
+        )
 
         self._create_certificates(downloadable['key'], mode=CourseMode.VERIFIED)
         self._create_certificates(generating['key'], status='generating', mode=CourseMode.HONOR)
         self._create_certificates(unknown['key'], status='unknown')
 
         meter = ProgramProgressMeter(self.site, self.user)
-        six.assertCountEqual(
-            self,
+        self.assertCountEqual(
             meter.completed_course_runs,
             [
-                {'course_run_id': downloadable['key'], 'type': CourseMode.VERIFIED},
-                {'course_run_id': generating['key'], 'type': CourseMode.HONOR},
+                {'course_run_id': str(downloadable['key']), 'type': CourseMode.VERIFIED},
+                {'course_run_id': str(generating['key']), 'type': CourseMode.HONOR},
             ]
         )
 
@@ -674,7 +745,7 @@ class TestProgramProgressMeter(TestCase):
 
         # Verify that the test program is not complete.
         meter = ProgramProgressMeter(self.site, self.user)
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [])
+        assert list(meter.completed_programs_with_available_dates.keys()) == []
 
         # Grant a 'no-id-professional' certificate for one of the course runs,
         # thereby completing the program.
@@ -683,7 +754,7 @@ class TestProgramProgressMeter(TestCase):
 
         # Verify that the program is complete.
         meter = ProgramProgressMeter(self.site, self.user)
-        self.assertEqual(list(meter.completed_programs_with_available_dates.keys()), [program['uuid']])
+        assert list(meter.completed_programs_with_available_dates.keys()) == [program['uuid']]
 
     @mock.patch(UTILS_MODULE + '.ProgramProgressMeter.completed_course_runs', new_callable=mock.PropertyMock)
     def test_credit_course_counted_complete_for_verified(self, mock_completed_course_runs, mock_get_programs):
@@ -700,7 +771,7 @@ class TestProgramProgressMeter(TestCase):
         self._create_enrollments(course_run_key)
         meter = ProgramProgressMeter(self.site, self.user)
         mock_completed_course_runs.return_value = [{'course_run_id': course_run_key, 'type': CourseMode.VERIFIED}]
-        self.assertEqual(meter._is_course_complete(course), True)  # lint-amnesty, pylint: disable=protected-access
+        assert meter._is_course_complete(course) is True  # lint-amnesty, pylint: disable=protected-access
 
     def test_detail_url_for_mobile_only(self, mock_get_programs):
         """
@@ -725,9 +796,9 @@ class TestProgramProgressMeter(TestCase):
         program_data = meter.engaged_programs[0]
         detail_fragment_url = reverse('program_details_fragment_view', kwargs={'program_uuid': program_data['uuid']})
         path_id = detail_fragment_url.replace('/dashboard/', '')
-        expected_url = 'edxapp://enrolled_program_info?path_id={}'.format(path_id)
+        expected_url = f'edxapp://enrolled_program_info?path_id={path_id}'
 
-        self.assertEqual(program_data['detail_url'], expected_url)
+        assert program_data['detail_url'] == expected_url
 
 
 def _create_course(self, course_price, course_run_count=1, make_entitlement=False):
@@ -746,7 +817,7 @@ def _create_course(self, course_price, course_run_count=1, make_entitlement=Fals
         course.instructor_info = self.instructors
         course = self.update_course(course, self.user.id)
 
-        run = CourseRunFactory(key=six.text_type(course.id), seats=[SeatFactory(price=course_price)])
+        run = CourseRunFactory(key=str(course.id), seats=[SeatFactory(price=course_price)])
         course_runs.append(run)
     entitlements = [EntitlementFactory()] if make_entitlement else []
 
@@ -775,14 +846,14 @@ class TestProgramDataExtender(ModuleStoreTestCase):
     }
 
     def setUp(self):
-        super(TestProgramDataExtender, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.course = ModuleStoreCourseFactory()
         self.course.start = datetime.datetime.now(utc) - datetime.timedelta(days=1)
         self.course.end = datetime.datetime.now(utc) + datetime.timedelta(days=1)
         self.course = self.update_course(self.course, self.user.id)
 
-        self.course_run = CourseRunFactory(key=six.text_type(self.course.id))
+        self.course_run = CourseRunFactory(key=str(self.course.id))
         self.catalog_course = CourseFactory(course_runs=[self.course_run])
         self.program = ProgramFactory(courses=[self.catalog_course])
         self.course_price = 100
@@ -812,7 +883,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         course['course_runs'] = [course_run]
         program['courses'] = [course]
 
-        self.assertEqual(actual, program)
+        assert actual == program
 
     @ddt.data(-1, 0, 1)
     def test_is_enrollment_open(self, days_offset):
@@ -960,7 +1031,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
 
         data = ProgramDataExtender(self.program, self.user).extend()
 
-        self.assertEqual(may_certify, data['courses'][0]['course_runs'][0]['may_certify'])
+        assert may_certify == data['courses'][0]['course_runs'][0]['may_certify']
 
         self._assert_supplemented(data)
 
@@ -971,7 +1042,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             - There are courses remaining that have not been purchased and enrolled in.
         """
         data = ProgramDataExtender(self.program, self.user).extend()
-        self.assertFalse(data['is_learner_eligible_for_one_click_purchase'])
+        assert not data['is_learner_eligible_for_one_click_purchase']
 
         courses = [_create_course(self, self.course_price)]
 
@@ -980,7 +1051,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             is_program_eligible_for_one_click_purchase=False
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertFalse(data['is_learner_eligible_for_one_click_purchase'])
+        assert not data['is_learner_eligible_for_one_click_purchase']
 
         course1 = _create_course(self, self.course_price)
         course2 = _create_course(self, self.course_price)
@@ -992,7 +1063,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program2, self.user).extend()
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
+        assert data['is_learner_eligible_for_one_click_purchase']
 
     def test_learner_eligibility_for_one_click_purchase_with_unpublished(self):
         """
@@ -1010,8 +1081,8 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program2, self.user).extend()
-        self.assertEqual(len(data['skus']), 1)
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
+        assert len(data['skus']) == 1
+        assert data['is_learner_eligible_for_one_click_purchase']
 
     def test_learner_eligibility_for_one_click_purchase_professional_no_id(self):
         """
@@ -1029,7 +1100,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             applicable_seat_types=[CourseMode.PROFESSIONAL]
         )
         data = ProgramDataExtender(program2, self.user).extend()
-        self.assertFalse(data['is_learner_eligible_for_one_click_purchase'])
+        assert not data['is_learner_eligible_for_one_click_purchase']
 
     def test_multiple_published_course_runs(self):
         """
@@ -1066,12 +1137,12 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         )
         data = ProgramDataExtender(program, self.user).extend()
 
-        self.assertFalse(data['is_learner_eligible_for_one_click_purchase'])
+        assert not data['is_learner_eligible_for_one_click_purchase']
 
         course_run_2['status'] = 'unpublished'
         data = ProgramDataExtender(program, self.user).extend()
 
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
+        assert data['is_learner_eligible_for_one_click_purchase']
 
     def test_learner_eligibility_for_one_click_purchase_entitlement_products(self):
         """
@@ -1081,15 +1152,15 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         """
         course1 = _create_course(self, self.course_price, course_run_count=2, make_entitlement=True)
         course2 = _create_course(self, self.course_price, course_run_count=2, make_entitlement=True)
-        expected_skus = set([course1['entitlements'][0]['sku'], course2['entitlements'][0]['sku']])
+        expected_skus = {course1['entitlements'][0]['sku'], course2['entitlements'][0]['sku']}
         program = ProgramFactory(
             courses=[course1, course2],
             is_program_eligible_for_one_click_purchase=True,
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(set(data['skus']), expected_skus)
+        assert data['is_learner_eligible_for_one_click_purchase']
+        assert set(data['skus']) == expected_skus
 
     def test_learner_eligibility_for_one_click_purchase_ineligible_program(self):
         """
@@ -1103,8 +1174,8 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertFalse(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(data['skus'], [])
+        assert not data['is_learner_eligible_for_one_click_purchase']
+        assert data['skus'] == []
 
     def test_learner_eligibility_for_one_click_purchase_user_entitlements(self):
         """
@@ -1114,15 +1185,15 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         course1 = _create_course(self, self.course_price, course_run_count=2, make_entitlement=True)
         course2 = _create_course(self, self.course_price, course_run_count=2, make_entitlement=True)
         CourseEntitlementFactory(user=self.user, course_uuid=course1['uuid'], mode=CourseMode.VERIFIED)
-        expected_skus = set([course2['entitlements'][0]['sku']])
+        expected_skus = {course2['entitlements'][0]['sku']}
         program = ProgramFactory(
             courses=[course1, course2],
             is_program_eligible_for_one_click_purchase=True,
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(set(data['skus']), expected_skus)
+        assert data['is_learner_eligible_for_one_click_purchase']
+        assert set(data['skus']) == expected_skus
 
     def test_all_courses_owned(self):
         """
@@ -1139,8 +1210,8 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         )
         data = ProgramDataExtender(program, self.user).extend()
 
-        self.assertFalse(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(data['skus'], [])
+        assert not data['is_learner_eligible_for_one_click_purchase']
+        assert data['skus'] == []
 
     def test_old_course_runs(self):
         """
@@ -1155,7 +1226,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             ProgramDataExtender(program_data, self.user).extend()
             logger.check(
                 (LOGGER_NAME,
-                 'WARNING', u'Failed to get course overview for course run key: {}'.format(course_run.get('key')))
+                 'WARNING', 'Failed to get course overview for course run key: {}'.format(course_run.get('key')))
             )
 
     def test_entitlement_product_wrong_mode(self):
@@ -1172,8 +1243,8 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertFalse(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(data['skus'], [])
+        assert not data['is_learner_eligible_for_one_click_purchase']
+        assert data['skus'] == []
 
     def test_second_entitlement_product_wrong_mode(self):
         """
@@ -1185,15 +1256,15 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         # The above statement makes a verified entitlement for the course, which is an applicable seat type
         # and the statement below makes a professional entitlement for the same course, which is not applicable
         course2['entitlements'].append(EntitlementFactory(mode=CourseMode.PROFESSIONAL))
-        expected_skus = set([course1['course_runs'][0]['seats'][0]['sku'], course2['entitlements'][0]['sku']])
+        expected_skus = {course1['course_runs'][0]['seats'][0]['sku'], course2['entitlements'][0]['sku']}
         program = ProgramFactory(
             courses=[course1, course2],
             is_program_eligible_for_one_click_purchase=True,
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(set(data['skus']), expected_skus)
+        assert data['is_learner_eligible_for_one_click_purchase']
+        assert set(data['skus']) == expected_skus
 
     def test_entitlement_product_and_user_enrollment(self):
         """
@@ -1202,7 +1273,7 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         """
         course1 = _create_course(self, self.course_price, make_entitlement=True)
         course2 = _create_course(self, self.course_price)
-        expected_skus = set([course2['course_runs'][0]['seats'][0]['sku']])
+        expected_skus = {course2['course_runs'][0]['seats'][0]['sku']}
         CourseEnrollmentFactory(user=self.user, course_id=course1['course_runs'][0]['key'], mode=CourseMode.VERIFIED)
         program = ProgramFactory(
             courses=[course1, course2],
@@ -1210,8 +1281,8 @@ class TestProgramDataExtender(ModuleStoreTestCase):
             applicable_seat_types=[CourseMode.VERIFIED],
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(set(data['skus']), expected_skus)
+        assert data['is_learner_eligible_for_one_click_purchase']
+        assert set(data['skus']) == expected_skus
 
     def test_user_enrollment_with_other_course_entitlement_product(self):
         """
@@ -1221,22 +1292,22 @@ class TestProgramDataExtender(ModuleStoreTestCase):
         course1 = _create_course(self, self.course_price, course_run_count=2)
         course2 = _create_course(self, self.course_price, course_run_count=2, make_entitlement=True)
         CourseEnrollmentFactory(user=self.user, course_id=course1['course_runs'][0]['key'], mode=CourseMode.VERIFIED)
-        expected_skus = set([course2['entitlements'][0]['sku']])
+        expected_skus = {course2['entitlements'][0]['sku']}
         program = ProgramFactory(
             courses=[course1, course2],
             is_program_eligible_for_one_click_purchase=True,
             applicable_seat_types=[CourseMode.VERIFIED, CourseMode.PROFESSIONAL],
         )
         data = ProgramDataExtender(program, self.user).extend()
-        self.assertTrue(data['is_learner_eligible_for_one_click_purchase'])
-        self.assertEqual(set(data['skus']), expected_skus)
+        assert data['is_learner_eligible_for_one_click_purchase']
+        assert set(data['skus']) == expected_skus
 
     def test_course_url_with_mobile_only(self):
         """
         Verify that correct course url is returned for mobile.
         """
         data = ProgramDataExtender(self.program, self.user, mobile_only=True).extend()
-        expected_course_url = 'edxapp://enrolled_course_info?course_id={}'.format(self.course.id)
+        expected_course_url = f'edxapp://enrolled_course_info?course_id={self.course.id}'
         self._assert_supplemented(data, course_url=expected_course_url)
 
 
@@ -1246,8 +1317,9 @@ class TestGetCertificates(TestCase):
     """
     Tests of the function used to get certificates associated with a program.
     """
+
     def setUp(self):
-        super(TestGetCertificates, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.user = UserFactory()
         self.program = ProgramFactory()
@@ -1293,7 +1365,7 @@ class TestGetCertificates(TestCase):
         }]
 
         certificates = get_certificates(self.user, self.program)
-        self.assertEqual(certificates, expected)
+        assert certificates == expected
 
     def test_course_run_certificates_missing(self, mock_get_credentials):
         """
@@ -1317,8 +1389,8 @@ class TestGetCertificates(TestCase):
         mock_get_credentials.return_value = [{'certificate_url': self.program_certificate_url}]
 
         certificates = get_certificates(self.user, self.program)
-        self.assertTrue(mock_get_credentials.called)
-        self.assertEqual(certificates, expected)
+        assert mock_get_credentials.called
+        assert certificates == expected
 
     def test_program_certificate_missing(self, mock_get_credentials):
         """
@@ -1335,7 +1407,7 @@ class TestGetCertificates(TestCase):
         mock_get_credentials.return_value = []
 
         certificates = get_certificates(self.user, self.program)
-        self.assertEqual(certificates, expected)
+        assert certificates == expected
 
     def test_get_program_certificate_url(self, mock_get_credentials):  # pylint: disable=unused-argument
         """
@@ -1343,7 +1415,7 @@ class TestGetCertificates(TestCase):
         """
         expected = 'http://fake-credentials.edx.org/login/?next=/credentials/fake-uuid/'
         actual = get_logged_in_program_certificate_url(self.program_certificate_url)
-        self.assertEqual(expected, actual)
+        assert expected == actual
 
 
 @ddt.ddt
@@ -1351,7 +1423,7 @@ class TestGetCertificates(TestCase):
 @skip_unless_lms
 class TestProgramMarketingDataExtender(ModuleStoreTestCase):
     """Tests of the program data extender utility class."""
-    ECOMMERCE_CALCULATE_DISCOUNT_ENDPOINT = '{root}/api/v2/baskets/calculate/'.format(root=ECOMMERCE_URL_ROOT)
+    ECOMMERCE_CALCULATE_DISCOUNT_ENDPOINT = f'{ECOMMERCE_URL_ROOT}/api/v2/baskets/calculate/'
     instructors = {
         'instructors': [
             {
@@ -1366,7 +1438,7 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
     }
 
     def setUp(self):
-        super(TestProgramMarketingDataExtender, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         # Ensure the E-Commerce service user exists
         UserFactory(username=settings.ECOMMERCE_SERVICE_WORKER_USERNAME, is_staff=True)
@@ -1408,15 +1480,15 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
         data = ProgramMarketingDataExtender(self.program, self.user).extend()
 
         self.program.update(self.instructors['instructors'])  # lint-amnesty, pylint: disable=no-member
-        self.assertEqual(data, self.program)
+        assert data == self.program
 
     def test_course_pricing(self):
         data = ProgramMarketingDataExtender(self.program, self.user).extend()
 
         program_full_price = self.course_price * self.number_of_courses
-        self.assertEqual(data['number_of_courses'], self.number_of_courses)
-        self.assertEqual(data['full_program_price'], program_full_price)
-        self.assertEqual(data['avg_price_per_course'], program_full_price / self.number_of_courses)
+        assert data['number_of_courses'] == self.number_of_courses
+        assert data['full_program_price'] == program_full_price
+        assert data['avg_price_per_course'] == (program_full_price / self.number_of_courses)
 
     def test_course_pricing_when_all_course_runs_have_no_seats(self):
         # Create three seatless course runs and add them to the program
@@ -1424,14 +1496,14 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
         for __ in range(3):
             course = ModuleStoreCourseFactory()
             course = self.update_course(course, self.user.id)
-            course_runs.append(CourseRunFactory(key=six.text_type(course.id), seats=[]))
+            course_runs.append(CourseRunFactory(key=str(course.id), seats=[]))
         program = ProgramFactory(courses=[CourseFactory(course_runs=course_runs)])
 
         data = ProgramMarketingDataExtender(program, self.user).extend()
 
-        self.assertEqual(data['number_of_courses'], len(program['courses']))
-        self.assertEqual(data['full_program_price'], 0.0)
-        self.assertEqual(data['avg_price_per_course'], 0.0)
+        assert data['number_of_courses'] == len(program['courses'])
+        assert data['full_program_price'] == 0.0
+        assert data['avg_price_per_course'] == 0.0
 
     @ddt.data(True, False)
     @mock.patch('django.contrib.auth.models.PermissionsMixin.has_perm')
@@ -1443,7 +1515,7 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
 
         data = ProgramMarketingDataExtender(self.program, self.user).extend()
 
-        self.assertEqual(data['courses'][0]['course_runs'][0]['can_enroll'], can_enroll)
+        assert data['courses'][0]['course_runs'][0]['can_enroll'] == can_enroll
 
     @httpretty.activate
     def test_fetching_program_discounted_price(self):
@@ -1468,15 +1540,12 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
         data = ProgramMarketingDataExtender(self.program, self.user).extend()
         self._update_discount_data(mock_discount_data)
 
-        self.assertEqual(httpretty.last_request().querystring.get('username')[0], self.user.username)  # lint-amnesty, pylint: disable=no-member
-        self.assertEqual(
-            data['skus'],
-            [course['course_runs'][0]['seats'][0]['sku'] for course in self.program['courses']]
-        )
-        self.assertEqual(data['discount_data'], mock_discount_data)
+        assert httpretty.last_request().querystring.get('username')[0] == self.user.username  # lint-amnesty, pylint: disable=no-member, line-too-long
+        assert data['skus'] == [course['course_runs'][0]['seats'][0]['sku'] for course in self.program['courses']]
+        assert data['discount_data'] == mock_discount_data
 
     @httpretty.activate
-    @override_switch(ALWAYS_CALCULATE_PROGRAM_PRICE_AS_ANONYMOUS_USER.name, active=True)
+    @override_waffle_switch(ALWAYS_CALCULATE_PROGRAM_PRICE_AS_ANONYMOUS_USER, True)
     def test_fetching_program_price_when_forced_as_anonymous_user(self):
         """
         When all users are forced as anonymous, all requests to calculate the program
@@ -1495,7 +1564,7 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
             content_type='application/json'
         )
         ProgramMarketingDataExtender(self.program, self.user).extend()
-        self.assertEqual(httpretty.last_request().querystring.get('is_anonymous')[0], u'True')  # lint-amnesty, pylint: disable=no-member
+        assert httpretty.last_request().querystring.get('is_anonymous')[0] == 'True'  # lint-amnesty, pylint: disable=no-member, line-too-long
 
     @httpretty.activate
     def test_fetching_program_discounted_price_as_anonymous_user(self):
@@ -1520,12 +1589,9 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
         data = ProgramMarketingDataExtender(self.program, user).extend()
         self._update_discount_data(mock_discount_data)
 
-        self.assertIsNotNone(httpretty.last_request().querystring.get('is_anonymous', None))  # lint-amnesty, pylint: disable=no-member
-        self.assertEqual(
-            data['skus'],
-            [course['course_runs'][0]['seats'][0]['sku'] for course in self.program['courses']]
-        )
-        self.assertEqual(data['discount_data'], mock_discount_data)
+        assert httpretty.last_request().querystring.get('is_anonymous', None) is not None  # lint-amnesty, pylint: disable=no-member, line-too-long
+        assert data['skus'] == [course['course_runs'][0]['seats'][0]['sku'] for course in self.program['courses']]
+        assert data['discount_data'] == mock_discount_data
 
     def test_fetching_program_discounted_price_no_applicable_seats(self):
         """
@@ -1534,7 +1600,7 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
         self.program['applicable_seat_types'] = []
         data = ProgramMarketingDataExtender(self.program, self.user).extend()
 
-        self.assertEqual(len(data['skus']), 0)
+        assert len(data['skus']) == 0
 
     @httpretty.activate
     def test_fetching_program_discounted_price_api_exception_caught(self):
@@ -1552,10 +1618,7 @@ class TestProgramMarketingDataExtender(ModuleStoreTestCase):
 
         data = ProgramMarketingDataExtender(self.program, self.user).extend()
 
-        self.assertEqual(
-            data['skus'],
-            [course['course_runs'][0]['seats'][0]['sku'] for course in self.program['courses']]
-        )
+        assert data['skus'] == [course['course_runs'][0]['seats'][0]['sku'] for course in self.program['courses']]
 
 
 @skip_unless_lms
@@ -1587,28 +1650,29 @@ class TestProgramEnrollment(SharedModuleStoreTestCase):
 
     def test_user_not_in_program(self, mock_get_programs_by_type):
         mock_get_programs_by_type.return_value = [self.program]
-        self.assertFalse(is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS))
+        assert not is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS)
 
     def test_user_enrolled_in_mb_program(self, mock_get_programs_by_type):
         CourseEnrollmentFactory.create(user=self.user, course_id=self.course_run.id, mode=CourseMode.VERIFIED)
         mock_get_programs_by_type.return_value = [self.program]
-        self.assertTrue(is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS))
+        assert is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS)
 
     def test_user_enrolled_unpaid_in_program(self, mock_get_programs_by_type):
         CourseEnrollmentFactory.create(user=self.user, course_id=self.course_run.id, mode=CourseMode.AUDIT)
         mock_get_programs_by_type.return_value = [self.program]
-        self.assertTrue(is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS))
+        assert is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS)
 
     def test_user_enrolled_unpaid_in_program_paid_only_request(self, mock_get_programs_by_type):
         CourseEnrollmentFactory.create(user=self.user, course_id=self.course_run.id, mode=CourseMode.AUDIT)
         mock_get_programs_by_type.return_value = [self.program]
-        self.assertFalse(
-            is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS, paid_modes_only=True)  # lint-amnesty, pylint: disable=line-too-long
-        )
+        assert not is_user_enrolled_in_program_type(user=self.user,
+                                                    program_type_slug=self.MICROBACHELORS,
+                                                    paid_modes_only=True)
 
     # NEW CODE HERE
     @mock.patch('openedx.core.djangoapps.programs.utils.get_paid_modes_for_course')
-    def test_user_enrolled_in_paid_only_with_no_matching_paid_course_modes(self, mock_get_paid_modes_for_course, mock_get_programs_by_type):  # lint-amnesty, pylint: disable=line-too-long
+    def test_user_enrolled_in_paid_only_with_no_matching_paid_course_modes(self, mock_get_paid_modes_for_course,
+                                                                           mock_get_programs_by_type):
         second_program = ProgramFactory(type=self.MICROBACHELORS)
         second_catalog_course_run = second_program['courses'][0]['course_runs'][0]
         second_course_key = CourseKey.from_string(second_catalog_course_run['key'])
@@ -1628,16 +1692,12 @@ class TestProgramEnrollment(SharedModuleStoreTestCase):
         # we should return False
         mock_get_paid_modes_for_course.return_value = []
         # raise Exception((mock_get_programs_by_type, mock_get_paid_modes_for_course))
-        self.assertFalse(
-            is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS, paid_modes_only=True)  # lint-amnesty, pylint: disable=line-too-long
-        )
+        assert not is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS, paid_modes_only=True)
 
         # We should continue to return false even if they do contain paid modes
         Mode = namedtuple('Mode', ['slug'])  # lint-amnesty, pylint: disable=unused-variable
         # mock_get_paid_modes_for_course.return_value = [Mode(CourseMode.VERIFIED)]
-        self.assertFalse(
-            is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS, paid_modes_only=True)  # lint-amnesty, pylint: disable=line-too-long
-        )
+        assert not is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS, paid_modes_only=True)
 
     def test_user_with_entitlement_no_enrollment(self, mock_get_programs_by_type):
         CourseEntitlementFactory.create(
@@ -1646,4 +1706,4 @@ class TestProgramEnrollment(SharedModuleStoreTestCase):
             course_uuid=self.program['courses'][0]['uuid']
         )
         mock_get_programs_by_type.return_value = [self.program]
-        self.assertTrue(is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS))
+        assert is_user_enrolled_in_program_type(user=self.user, program_type_slug=self.MICROBACHELORS)

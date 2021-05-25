@@ -7,41 +7,38 @@ import itertools
 import json
 import re
 import unittest
-from datetime import datetime, timedelta  # lint-amnesty, pylint: disable=unused-import
+from datetime import timedelta  # lint-amnesty, pylint: disable=unused-import
+from unittest.mock import patch
 
 import ddt
-import six
 from completion.test_utils import CompletionWaffleTestMixin, submit_completions_for_testing
 from django.conf import settings
-from django.test import TestCase
-from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils.timezone import now
-from edx_toggles.toggles.testutils import override_waffle_flag
 from milestones.tests.utils import MilestonesTestCaseMixin
-from mock import patch
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
 from pyquery import PyQuery as pq
-from six.moves import range
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.entitlements.tests.factories import CourseEntitlementFactory
-from lms.djangoapps.certificates.tests.factories import GeneratedCertificateFactory
-from openedx.core.djangoapps.catalog.tests.factories import ProgramFactory
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
-from openedx.core.djangoapps.content.course_overviews.tests.factories import CourseOverviewFactory
-from openedx.core.djangoapps.schedules.config import COURSE_UPDATE_WAFFLE_FLAG
-from openedx.core.djangoapps.schedules.tests.factories import ScheduleFactory
-from openedx.core.djangoapps.site_configuration.tests.test_util import with_site_configuration_context
-from openedx.features.course_duration_limits.models import CourseDurationLimitConfig
-from openedx.features.course_experience.tests.views.helpers import add_course_mode
 from common.djangoapps.student.helpers import DISABLE_UNENROLL_CERT_STATES
 from common.djangoapps.student.models import CourseEnrollment, UserProfile
 from common.djangoapps.student.signals import REFUND_ORDER
 from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
-from common.djangoapps.util.milestones_helpers import get_course_milestones, remove_prerequisite_course, set_prerequisite_courses  # lint-amnesty, pylint: disable=line-too-long
-from common.djangoapps.util.testing import UrlResetMixin
+from common.djangoapps.util.milestones_helpers import (
+    get_course_milestones,
+    remove_prerequisite_course,
+    set_prerequisite_courses
+)
+from common.djangoapps.util.testing import UrlResetMixin  # lint-amnesty, pylint: disable=unused-import
+from lms.djangoapps.certificates.tests.factories import GeneratedCertificateFactory
+from openedx.core.djangoapps.catalog.tests.factories import ProgramFactory
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from openedx.core.djangoapps.content.course_overviews.tests.factories import CourseOverviewFactory
+from openedx.core.djangoapps.site_configuration.tests.test_util import with_site_configuration_context
+from openedx.features.course_duration_limits.models import CourseDurationLimitConfig
+from openedx.features.course_experience.tests.views.helpers import add_course_mode
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
@@ -59,12 +56,12 @@ class TestStudentDashboardUnenrollments(SharedModuleStoreTestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(TestStudentDashboardUnenrollments, cls).setUpClass()
+        super().setUpClass()
         cls.course = CourseFactory.create()
 
     def setUp(self):
         """ Create a course and user, then log in. """
-        super(TestStudentDashboardUnenrollments, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user = UserFactory()
         self.enrollment = CourseEnrollmentFactory(course_id=self.course.id, user=self.user)
         self.cert_status = 'processing'
@@ -196,7 +193,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
         """
         Create a course and user, then log in.
         """
-        super(StudentDashboardTests, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user = UserFactory()
         self.client.login(username=self.user.username, password=PASSWORD)
         self.path = reverse('dashboard')
@@ -290,11 +287,11 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
             org='edx',
             number='998',
             display_name='Test Course',
-            pre_requisite_courses=[six.text_type(self.pre_requisite_course.id)]
+            pre_requisite_courses=[str(self.pre_requisite_course.id)]
         )
         self.course_enrollment = CourseEnrollmentFactory(course_id=self.course.id, user=self.user)  # lint-amnesty, pylint: disable=attribute-defined-outside-init
 
-        set_prerequisite_courses(self.course.id, [six.text_type(self.pre_requisite_course.id)])
+        set_prerequisite_courses(self.course.id, [str(self.pre_requisite_course.id)])
         response = self.client.get(reverse('dashboard'))
         self.assertContains(response, '<div class="prerequisites">')
 
@@ -322,7 +319,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
         mock_course_overview.return_value = CourseOverviewFactory.create(start=self.TOMORROW, id=course_key)
         mock_course_runs.return_value = [
             {
-                'key': six.text_type(course_key),
+                'key': str(course_key),
                 'enrollment_end': str(self.TOMORROW),
                 'pacing_type': 'instructor_paced',
                 'type': 'verified',
@@ -330,7 +327,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
             }
         ]
         mock_pseudo_session.return_value = {
-            'key': six.text_type(course_key),
+            'key': str(course_key),
             'type': 'verified'
         }
         response = self.client.get(self.path)
@@ -407,7 +404,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
             start=self.TOMORROW, end=self.THREE_YEARS_FROM_NOW, self_paced=True, enrollment_end=self.THREE_YEARS_AGO
         )
         mock_course_overview.return_value = mocked_course_overview
-        course_enrollment = CourseEnrollmentFactory(user=self.user, course_id=six.text_type(mocked_course_overview.id))
+        course_enrollment = CourseEnrollmentFactory(user=self.user, course_id=str(mocked_course_overview.id))
         mock_course_runs.return_value = [
             {
                 'key': str(mocked_course_overview.id),
@@ -471,7 +468,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
             start=self.TOMORROW, self_paced=True, enrollment_end=self.TOMORROW
         )
         mock_course_overview.return_value = mocked_course_overview
-        course_enrollment = CourseEnrollmentFactory(user=self.user, course_id=six.text_type(mocked_course_overview.id))
+        course_enrollment = CourseEnrollmentFactory(user=self.user, course_id=str(mocked_course_overview.id))
         mock_course_runs.return_value = [
             {
                 'key': str(mocked_course_overview.id),
@@ -483,7 +480,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
         ]
         entitlement = CourseEntitlementFactory(user=self.user, enrollment_course_run=course_enrollment)
         program = ProgramFactory()
-        program['courses'][0]['course_runs'] = [{'key': six.text_type(mocked_course_overview.id)}]
+        program['courses'][0]['course_runs'] = [{'key': str(mocked_course_overview.id)}]
         program['courses'][0]['uuid'] = entitlement.course_uuid
         mock_get_programs.return_value = [program]
         response = self.client.get(self.path)
@@ -506,7 +503,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
             start=self.TOMORROW, self_paced=True, enrollment_end=self.TOMORROW
         )
         mock_course_overview.return_value = mocked_course_overview
-        course_enrollment = CourseEnrollmentFactory(user=self.user, course_id=six.text_type(mocked_course_overview.id), created=self.THREE_YEARS_AGO)  # lint-amnesty, pylint: disable=line-too-long
+        course_enrollment = CourseEnrollmentFactory(user=self.user, course_id=str(mocked_course_overview.id), created=self.THREE_YEARS_AGO)  # lint-amnesty, pylint: disable=line-too-long
         mock_course_runs.return_value = [
             {
                 'key': str(mocked_course_overview.id),
@@ -518,7 +515,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
         ]
         entitlement = CourseEntitlementFactory(user=self.user, enrollment_course_run=course_enrollment, created=self.THREE_YEARS_AGO)  # lint-amnesty, pylint: disable=line-too-long
         program = ProgramFactory()
-        program['courses'][0]['course_runs'] = [{'key': six.text_type(mocked_course_overview.id)}]
+        program['courses'][0]['course_runs'] = [{'key': str(mocked_course_overview.id)}]
         program['courses'][0]['uuid'] = entitlement.course_uuid
         mock_get_programs.return_value = [program]
         response = self.client.get(self.path)
@@ -539,7 +536,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
         course_enrollment = CourseEnrollmentFactory(user=self.user, course_id=course_overview.id)
         entitlement = CourseEntitlementFactory(user=self.user, enrollment_course_run=course_enrollment)
         course_runs = [{
-            'key': six.text_type(course_overview.id),
+            'key': str(course_overview.id),
             'uuid': entitlement.course_uuid
         }]
         mock_get_course_runs.return_value = course_runs
@@ -725,7 +722,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
             ItemFactory.create(
                 category='video',
                 parent_location=course.location,
-                display_name='Video {0}'.format(six.text_type(number))
+                display_name=f'Video {str(number)}'
             ).location
             for number in range(5)
         ]
@@ -755,7 +752,6 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
         assert resume_button_html in dashboard_html
         assert view_button_html not in dashboard_html
 
-    @override_waffle_flag(COURSE_UPDATE_WAFFLE_FLAG, True)
     def test_content_gating_course_card_changes(self):
         """
         When a course is expired, the links on the course card should be removed.
@@ -774,9 +770,6 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
         )
         enrollment.created = self.THREE_YEARS_AGO + timedelta(days=1)
         enrollment.save()
-
-        # pylint: disable=unused-variable
-        schedule = ScheduleFactory(enrollment=enrollment)
 
         response = self.client.get(reverse('dashboard'))
         dashboard_html = self._remove_whitespace_from_response(response)
@@ -830,7 +823,7 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
                     ItemFactory.create(
                         category='video',
                         parent_location=course.location,
-                        display_name='Video {0}'.format(six.text_type(number))
+                        display_name=f'Video {str(number)}'
                     ).location
                     for number in range(5)
                 ]
@@ -891,13 +884,3 @@ class StudentDashboardTests(SharedModuleStoreTestCase, MilestonesTestCaseMixin, 
 
             assert expected_button in dashboard_html
             assert unexpected_button not in dashboard_html
-
-
-@unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
-@override_settings(BRANCH_IO_KEY='test_key')
-class TextMeTheAppViewTests(UrlResetMixin, TestCase):
-    """ Tests for the TextMeTheAppView. """
-
-    def test_text_me_the_app(self):
-        response = self.client.get(reverse('text_me_the_app'))
-        self.assertContains(response, 'Send me a text with the link')

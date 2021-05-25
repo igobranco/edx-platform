@@ -55,9 +55,9 @@ However, this has two main disadvantages:
 Usage
 ~~~~~
 
-To use, find ``MIDDLEWARE_CLASSES`` in your ``settings.py`` and replace::
+To use, find ``MIDDLEWARE`` in your ``settings.py`` and replace::
 
-    MIDDLEWARE_CLASSES = [
+    MIDDLEWARE = [
         ...
         'django.contrib.auth.middleware.AuthenticationMiddleware',
         ...
@@ -65,7 +65,7 @@ To use, find ``MIDDLEWARE_CLASSES`` in your ``settings.py`` and replace::
 
 with::
 
-    MIDDLEWARE_CLASSES = [
+    MIDDLEWARE = [
         ...
         'openedx.core.djangoapps.cache_toolbox.middleware.CacheBackedAuthenticationMiddleware',
         ...
@@ -101,7 +101,7 @@ class CacheBackedAuthenticationMiddleware(AuthenticationMiddleware, MiddlewareMi
     """
     def __init__(self, *args, **kwargs):
         cache_model(User)
-        super(CacheBackedAuthenticationMiddleware, self).__init__(*args, **kwargs)  # lint-amnesty, pylint: disable=super-with-arguments
+        super().__init__(*args, **kwargs)
 
     def process_request(self, request):
         try:
@@ -110,7 +110,7 @@ class CacheBackedAuthenticationMiddleware(AuthenticationMiddleware, MiddlewareMi
             request.user = User.get_cached(session_user_id)  # lint-amnesty, pylint: disable=no-member
             if request.user.id != session_user_id:
                 log.error(
-                    u"CacheBackedAuthenticationMiddleware cached user '%s' does not match requested user '%s'.",
+                    "CacheBackedAuthenticationMiddleware cached user '%s' does not match requested user '%s'.",
                     request.user.id,
                     session_user_id,
                 )
@@ -119,7 +119,7 @@ class CacheBackedAuthenticationMiddleware(AuthenticationMiddleware, MiddlewareMi
             self._verify_session_auth(request)
         except:  # pylint: disable=bare-except
             # Fallback to constructing the User from the database.
-            super(CacheBackedAuthenticationMiddleware, self).process_request(request)  # lint-amnesty, pylint: disable=super-with-arguments
+            super().process_request(request)
 
     def _verify_session_auth(self, request):
         """

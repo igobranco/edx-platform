@@ -5,7 +5,7 @@ Mixins for the EnterpriseApiClient.
 
 import json
 
-import mock
+from unittest import mock
 
 import httpretty
 from django.conf import settings
@@ -15,7 +15,7 @@ from django.urls import reverse
 from openedx.features.enterprise_support.tests import FAKE_ENTERPRISE_CUSTOMER
 
 
-class EnterpriseServiceMockMixin(object):
+class EnterpriseServiceMockMixin:
     """
     Mocks for the Enterprise service responses.
     """
@@ -23,13 +23,13 @@ class EnterpriseServiceMockMixin(object):
     consent_url = '{}{}'.format(settings.ENTERPRISE_CONSENT_API_URL, 'data_sharing_consent')
 
     def setUp(self):
-        super(EnterpriseServiceMockMixin, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         cache.clear()
 
     @staticmethod
     def get_enterprise_url(path):
         """Return a URL to the configured Enterprise API. """
-        return '{}{}/'.format(settings.ENTERPRISE_API_URL, path)
+        return f'{settings.ENTERPRISE_API_URL}{path}/'
 
     def mock_get_enterprise_customer(self, uuid, response, status):
         """
@@ -279,15 +279,15 @@ class EnterpriseTestConsentRequired(SimpleTestCase):
         response = client.get(url)
         while(response.status_code == 302 and 'grant_data_sharing_permissions' not in response.url):
             response = client.get(response.url)
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('grant_data_sharing_permissions', response.url)
+        assert response.status_code == 302
+        assert 'grant_data_sharing_permissions' in response.url
 
         # Ensure that when consent is not necessary, the user continues through to the requested page.
         mock_consent_necessary.return_value = False
         response = client.get(url)
-        self.assertEqual(response.status_code, status_code)
+        assert response.status_code == status_code
 
         # If we were expecting a redirect, ensure it's not to the data sharing permission page
         if status_code == 302:
-            self.assertNotIn('grant_data_sharing_permissions', response.url)
+            assert 'grant_data_sharing_permissions' not in response.url
         return response

@@ -12,11 +12,11 @@ import logging
 import re
 import sys
 
-import six
+import six  # lint-amnesty, pylint: disable=unused-import
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 from eventtracking import tracker
-from ipware.ip import get_ip
+from ipware.ip import get_client_ip
 
 from common.djangoapps.track import contexts, views
 
@@ -138,12 +138,12 @@ class TrackMiddleware(MiddlewareMixin):
             'username': self.get_username(request),
             'ip': self.get_request_ip_address(request),
         }
-        for header_name, context_key in six.iteritems(META_KEY_TO_CONTEXT_KEY):
+        for header_name, context_key in META_KEY_TO_CONTEXT_KEY.items():
             # HTTP headers may contain Latin1 characters. Decoding using Latin1 encoding here
             # avoids encountering UnicodeDecodeError exceptions when these header strings are
             # output to tracking logs.
             context_value = request.META.get(header_name, '')
-            if isinstance(context_value, six.binary_type):
+            if isinstance(context_value, bytes):
                 context_value = context_value.decode('latin1')
             context[context_key] = context_value
 
@@ -229,7 +229,7 @@ class TrackMiddleware(MiddlewareMixin):
 
     def get_request_ip_address(self, request):
         """Gets the IP address of the request"""
-        ip_address = get_ip(request)
+        ip_address = get_client_ip(request)[0]
         if ip_address is not None:
             return ip_address
         else:

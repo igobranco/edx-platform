@@ -52,7 +52,7 @@ class StubYouTubeHandler(StubHttpRequestHandler):
         Handle a GET request from the client and sends response back.
         """
         self.log_message(
-            "Youtube provider received GET request to path {}".format(self.path)
+            f"Youtube provider received GET request to path {self.path}"
         )
 
         if 'get_config' in self.path:
@@ -134,10 +134,10 @@ class StubYouTubeHandler(StubHttpRequestHandler):
                 })
             )
         })
-        response = "{cb}({data})".format(cb=callback, data=json.dumps(data)).encode('utf-8')
+        response = f"{callback}({json.dumps(data)})".encode('utf-8')
 
         self.send_response(200, content=response, headers={'Content-type': 'text/html'})
-        self.log_message("Youtube: sent response {}".format(message))
+        self.log_message(f"Youtube: sent response {message}")
 
     def _send_private_video_response(self, message):
         """
@@ -158,10 +158,10 @@ class StubYouTubeHandler(StubHttpRequestHandler):
                 "message": message,
             })
         })
-        response = "{cb}({data})".format(cb=callback, data=json.dumps(data)).encode('utf-8')
+        response = f"{callback}({json.dumps(data)})".encode('utf-8')
 
         self.send_response(200, content=response, headers={'Content-type': 'text/html'})
-        self.log_message("Youtube: sent response {}".format(message))
+        self.log_message(f"Youtube: sent response {message}")
 
 
 class StubYouTubeService(StubHttpService):

@@ -1,12 +1,8 @@
-
-
-import itertools
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import ddt
 import pytz
-import waffle
 from django.test import TestCase
 from edx_toggles.toggles import LegacyWaffleSwitch
 from edx_toggles.toggles.testutils import override_waffle_switch
@@ -20,7 +16,7 @@ from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, U
 
 # TODO: Copied from lms.djangoapps.certificates.models,
 # to be resolved per https://openedx.atlassian.net/browse/EDUCATOR-1318
-class CertificateStatuses(object):
+class CertificateStatuses:
     """
     Enum for certificate statuses
     """
@@ -45,7 +41,7 @@ class CertificateStatuses(object):
     )
 
 
-class MockGeneratedCertificate(object):
+class MockGeneratedCertificate:
     """
     We can't import GeneratedCertificate from LMS here, so we roll
     our own minimal Certificate model for testing.
@@ -76,7 +72,7 @@ def configure_waffle_namespace(feature_enabled):
 @ddt.ddt
 class CertificatesApiTestCase(TestCase):
     def setUp(self):
-        super(CertificatesApiTestCase, self).setUp()
+        super().setUp()
         self.course = CourseOverviewFactory.create(
             start=datetime(2017, 1, 1, tzinfo=pytz.UTC),
             end=datetime(2017, 1, 31, tzinfo=pytz.UTC),

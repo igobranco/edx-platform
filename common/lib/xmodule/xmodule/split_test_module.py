@@ -10,10 +10,9 @@ from functools import reduce
 from operator import itemgetter
 from uuid import uuid4
 
-import six
 from django.utils.functional import cached_property
 from lxml import etree
-from six import text_type
+from pkg_resources import resource_string
 from web_fragments.fragment import Fragment
 from webob import Response
 from xblock.core import XBlock
@@ -21,12 +20,13 @@ from xblock.fields import Integer, ReferenceValueDict, Scope, String
 from xmodule.mako_module import MakoTemplateBlockBase
 from xmodule.modulestore.inheritance import UserPartitionList
 from xmodule.progress import Progress
-from xmodule.seq_module import ProctoringFields, SequenceDescriptor, SequenceMixin
+from xmodule.seq_module import ProctoringFields, SequenceMixin
 from xmodule.studio_editable import StudioEditableBlock
 from xmodule.util.xmodule_django import add_webpack_to_fragment
 from xmodule.validation import StudioValidation, StudioValidationMessage
 from xmodule.xml_module import XmlMixin
 from xmodule.x_module import (
+    HTMLSnippet,
     ResourceTemplates,
     shim_xmodule_js,
     STUDENT_VIEW,
@@ -41,7 +41,7 @@ log = logging.getLogger('edx.' + __name__)
 #  `django.utils.translation.ugettext_noop` because Django cannot be imported in this file
 _ = lambda text: text
 
-DEFAULT_GROUP_NAME = _(u'Group ID {group_id}')
+DEFAULT_GROUP_NAME = _('Group ID {group_id}')
 
 
 class UserPartitionValues(threading.local):
@@ -73,7 +73,7 @@ class UserPartitionValues(threading.local):
 user_partition_values = UserPartitionValues()
 
 
-class SplitTestFields(object):
+class SplitTestFields:
     """Fields needed for split test module"""
     has_children = True
 
@@ -125,7 +125,7 @@ def get_split_user_partitions(user_partitions):
 @XBlock.needs('user_tags')  # pylint: disable=abstract-method
 @XBlock.needs('partitions')
 @XBlock.needs('user')
-class SplitTestBlock(
+class SplitTestBlock(  # lint-amnesty, pylint: disable=abstract-method
     SplitTestFields,
     SequenceMixin,
     ProctoringFields,
@@ -133,6 +133,7 @@ class SplitTestBlock(
     XmlMixin,
     XModuleDescriptorToXBlockMixin,
     XModuleToXBlockMixin,
+    HTMLSnippet,
     ResourceTemplates,
     XModuleMixin,
     StudioEditableBlock,
@@ -158,7 +159,23 @@ class SplitTestBlock(
 
     show_in_read_only_mode = True
 
+    preview_view_js = {
+        'js': [],
+        'xmodule_js': resource_string(__name__, 'js/src/xmodule.js'),
+    }
+    preview_view_css = {
+        'scss': [],
+    }
+
     mako_template = "widgets/metadata-only-edit.html"
+    studio_js_module_name = 'SequenceDescriptor'
+    studio_view_js = {
+        'js': [resource_string(__name__, 'js/src/sequence/edit.js')],
+        'xmodule_js': resource_string(__name__, 'js/src/xmodule.js'),
+    }
+    studio_view_css = {
+        'scss': [],
+    }
 
     @cached_property
     def child_descriptor(self):
@@ -265,8 +282,8 @@ class SplitTestBlock(
                 group_name = child.display_name
                 updated_group_id = [g_id for g_id, loc in self.group_id_to_child.items() if loc == child_location][0]
                 inactive_contents.append({
-                    'group_name': _(u'{group_name} (inactive)').format(group_name=group_name),
-                    'id': text_type(child.location),
+                    'group_name': _('{group_name} (inactive)').format(group_name=group_name),
+                    'id': str(child.location),
                     'content': rendered_child.content,
                     'group_id': updated_group_id,
                 })
@@ -274,7 +291,7 @@ class SplitTestBlock(
 
             active_contents.append({
                 'group_name': group_name,
-                'id': text_type(child.location),
+                'id': str(child.location),
                 'content': rendered_child.content,
                 'group_id': updated_group_id,
             })
@@ -352,10 +369,8 @@ class SplitTestBlock(
         fragment = Fragment(
             self.system.render_template(self.mako_template, self.get_context())
         )
-        # Use the SequenceDescriptor js for the metadata edit view.
-        # Both the webpack bundle to include and the js class are named "SequenceDescriptor".
-        add_webpack_to_fragment(fragment, SequenceDescriptor.js_module_name)
-        shim_xmodule_js(fragment, SequenceDescriptor.js_module_name)
+        add_webpack_to_fragment(fragment, 'SplitTestBlockStudio')
+        shim_xmodule_js(fragment, self.studio_js_module_name)
         return fragment
 
     def student_view(self, context):
@@ -365,7 +380,7 @@ class SplitTestBlock(
         """
         if self.child is None:
             # raise error instead?  In fact, could complain on descriptor load...
-            return Fragment(content=u"<div>Nothing here.  Move along.</div>")
+            return Fragment(content="<div>Nothing here.  Move along.</div>")
 
         if self.system.user_is_staff:
             return self._staff_view(context)
@@ -387,11 +402,11 @@ class SplitTestBlock(
         """
         # TODO: use publish instead, when publish is wired to the tracking logs
         try:
-            child_id = text_type(self.child.scope_ids.usage_id)
+            child_id = str(self.child.scope_ids.usage_id)
         except Exception:
             log.info(
                 "Can't get usage_id of Nonetype object in course {course_key}".format(
-                    course_key=six.text_type(self.location.course_key)
+                    course_key=str(self.location.course_key)
                 )
             )
             raise
@@ -415,7 +430,7 @@ class SplitTestBlock(
         user_partition = self.get_selected_partition()
         if user_partition:
             for group in user_partition.groups:
-                group_id = six.text_type(group.id)
+                group_id = str(group.id)
                 child_location = self.group_id_to_child.get(group_id, None)
                 if child_location == vertical.location:
                     return (group.name, group.id)
@@ -430,7 +445,7 @@ class SplitTestBlock(
         renderable_groups = {}
         # json.dumps doesn't know how to handle Location objects
         for group in self.group_id_to_child:
-            renderable_groups[group] = text_type(self.group_id_to_child[group])
+            renderable_groups[group] = str(self.group_id_to_child[group])
         xml_object.set('group_id_to_child', json.dumps(renderable_groups))
         xml_object.set('user_partition_id', str(self.user_partition_id))
         for child in self.get_children():
@@ -560,7 +575,7 @@ class SplitTestBlock(
         # Compute the active children in the order specified by the user partition
         active_children = []
         for group in user_partition.groups:
-            group_id = six.text_type(group.id)
+            group_id = str(group.id)
             child_location = self.group_id_to_child.get(group_id, None)
             child = get_child_descriptor(child_location)
             if child:
@@ -609,9 +624,9 @@ class SplitTestBlock(
             split_validation.add(
                 StudioValidationMessage(
                     StudioValidationMessage.NOT_CONFIGURED,
-                    _(u"The experiment is not associated with a group configuration."),
+                    _("The experiment is not associated with a group configuration."),
                     action_class='edit-button',
-                    action_label=_(u"Select a Group Configuration")
+                    action_label=_("Select a Group Configuration")
                 )
             )
         else:
@@ -620,7 +635,7 @@ class SplitTestBlock(
                 split_validation.add(
                     StudioValidationMessage(
                         StudioValidationMessage.ERROR,
-                        _(u"The experiment uses a deleted group configuration. Select a valid group configuration or delete this experiment.")  # lint-amnesty, pylint: disable=line-too-long
+                        _("The experiment uses a deleted group configuration. Select a valid group configuration or delete this experiment.")  # lint-amnesty, pylint: disable=line-too-long
                     )
                 )
             else:
@@ -630,8 +645,8 @@ class SplitTestBlock(
                     split_validation.add(
                         StudioValidationMessage(
                             StudioValidationMessage.ERROR,
-                            _(u"The experiment uses a group configuration that is not supported for experiments. "
-                              u"Select a valid group configuration or delete this experiment.")
+                            _("The experiment uses a group configuration that is not supported for experiments. "
+                              "Select a valid group configuration or delete this experiment.")
                         )
                     )
                 else:
@@ -640,17 +655,17 @@ class SplitTestBlock(
                         split_validation.add(
                             StudioValidationMessage(
                                 StudioValidationMessage.ERROR,
-                                _(u"The experiment does not contain all of the groups in the configuration."),
+                                _("The experiment does not contain all of the groups in the configuration."),
                                 action_runtime_event='add-missing-groups',
-                                action_label=_(u"Add Missing Groups")
+                                action_label=_("Add Missing Groups")
                             )
                         )
                     if len(inactive_children) > 0:
                         split_validation.add(
                             StudioValidationMessage(
                                 StudioValidationMessage.WARNING,
-                                _(u"The experiment has an inactive group. "
-                                  u"Move content into active groups, then delete the inactive group.")
+                                _("The experiment has an inactive group. "
+                                  "Move content into active groups, then delete the inactive group.")
                             )
                         )
         return split_validation
@@ -668,7 +683,7 @@ class SplitTestBlock(
             has_error = any(message.type == StudioValidationMessage.ERROR for message in validation.messages)
             return StudioValidationMessage(
                 StudioValidationMessage.ERROR if has_error else StudioValidationMessage.WARNING,
-                _(u"This content experiment has issues that affect content visibility.")
+                _("This content experiment has issues that affect content visibility.")
             )
         return None
 
@@ -683,7 +698,7 @@ class SplitTestBlock(
 
         changed = False
         for group in user_partition.groups:
-            str_group_id = six.text_type(group.id)
+            str_group_id = str(group.id)
             if str_group_id not in self.group_id_to_child:
                 user_id = self.runtime.service(self, 'user').get_current_user().opt_attrs['edx-platform.user_id']
                 self._create_vertical_for_group(group, user_id)
@@ -705,7 +720,7 @@ class SplitTestBlock(
             user_partition = self.get_selected_partition()
             if user_partition:
                 group_configuration_url = "{url}#{configuration_id}".format(
-                    url='/group_configurations/' + six.text_type(self.location.course_key),
+                    url='/group_configurations/' + str(self.location.course_key),
                     configuration_id=str(user_partition.id)
                 )
 
@@ -734,4 +749,4 @@ class SplitTestBlock(
             runtime=self.system,
         )
         self.children.append(dest_usage_key)  # pylint: disable=no-member
-        self.group_id_to_child[six.text_type(group.id)] = dest_usage_key
+        self.group_id_to_child[str(group.id)] = dest_usage_key

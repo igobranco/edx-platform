@@ -1,30 +1,27 @@
-# -*- coding: utf-8 -*-
 """Tests for the XQueue certificates interface. """
 
 
 import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from unittest.mock import Mock, patch
 
 import ddt
 import freezegun
 import pytz
-import six
+from django.conf import settings
+from django.test import TestCase
+from django.test.utils import override_settings
+from opaque_keys.edx.locator import CourseLocator
+from testfixtures import LogCapture
+
 # It is really unfortunate that we are using the XQueue client
 # code from the capa library.  In the future, we should move this
 # into a shared library.  We import it here so we can mock it
 # and verify that items are being correctly added to the queue
 # in our `XQueueCertInterface` implementation.
 from capa.xqueue_interface import XQueueInterface
-from django.conf import settings  # lint-amnesty, pylint: disable=wrong-import-order
-from django.test import TestCase  # lint-amnesty, pylint: disable=wrong-import-order
-from django.test.utils import override_settings  # lint-amnesty, pylint: disable=wrong-import-order
-from mock import Mock, patch  # lint-amnesty, pylint: disable=wrong-import-order
-from opaque_keys.edx.locator import CourseLocator  # lint-amnesty, pylint: disable=wrong-import-order
-from testfixtures import LogCapture  # lint-amnesty, pylint: disable=wrong-import-order
-from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
-from xmodule.modulestore.tests.factories import CourseFactory
-
+from common.djangoapps.course_modes import api as modes_api
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
 from lms.djangoapps.certificates.models import (
@@ -34,9 +31,11 @@ from lms.djangoapps.certificates.models import (
     GeneratedCertificate
 )
 from lms.djangoapps.certificates.queue import LOGGER, XQueueCertInterface
-from lms.djangoapps.certificates.tests.factories import CertificateWhitelistFactory, GeneratedCertificateFactory
+from lms.djangoapps.certificates.tests.factories import CertificateAllowlistFactory, GeneratedCertificateFactory
 from lms.djangoapps.grades.tests.utils import mock_passing_grade
 from lms.djangoapps.verify_student.tests.factories import SoftwareSecurePhotoVerificationFactory
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
+from xmodule.modulestore.tests.factories import CourseFactory
 
 
 @ddt.ddt
@@ -93,7 +92,7 @@ class XQueueCertInterfaceAddCertificateTest(ModuleStoreTestCase):
             id=self.course.id
         )
         mock_send = self.add_cert_to_queue(mode)
-        if CourseMode.is_eligible_for_certificate(mode):
+        if modes_api.is_eligible_for_certificate(mode):
             self.assert_certificate_generated(mock_send, mode, template_name)
         else:
             self.assert_ineligible_certificate_generated(mock_send, mode)
@@ -126,7 +125,7 @@ class XQueueCertInterfaceAddCertificateTest(ModuleStoreTestCase):
             mode='audit'
         )
         # Whitelist student
-        CertificateWhitelistFactory(course_id=self.course.id, user=self.user_2)
+        CertificateAllowlistFactory(course_id=self.course.id, user=self.user_2)
 
         features = settings.FEATURES
         features['DISABLE_AUDIT_CERTIFICATES'] = disable_audit_cert
@@ -349,14 +348,14 @@ class XQueueCertInterfaceAddCertificateTest(ModuleStoreTestCase):
                     LOGGER.name,
                     'WARNING',
                     (
-                        u"PDF certificate generation discontinued, canceling "
-                        u"PDF certificate generation for student {student_id} "
-                        u"in course '{course_id}' "
-                        u"with status '{status}' "
-                        u"and download_url '{download_url}'."
+                        "PDF certificate generation discontinued, canceling "
+                        "PDF certificate generation for student {student_id} "
+                        "in course '{course_id}' "
+                        "with status '{status}' "
+                        "and download_url '{download_url}'."
                     ).format(
                         student_id=self.user_2.id,
-                        course_id=six.text_type(self.course.id),
+                        course_id=str(self.course.id),
                         status=CertificateStatuses.downloadable,
                         download_url=download_url
                     )
@@ -418,15 +417,15 @@ class XQueueCertInterfaceExampleCertificateTest(TestCase):
         """Check that the task was added to the queue. """
         expected_header = {
             'lms_key': cert.access_key,
-            'lms_callback_url': 'https://edx.org/update_example_certificate?key={key}'.format(key=cert.uuid),
+            'lms_callback_url': f'https://edx.org/update_example_certificate?key={cert.uuid}',
             'queue_name': 'certificates'
         }
 
         expected_body = {
             'action': 'create',
             'username': cert.uuid,
-            'name': u'John Doë',
-            'course_id': six.text_type(self.COURSE_KEY),
+            'name': 'John Doë',
+            'course_id': str(self.COURSE_KEY),
             'template_pdf': 'test.pdf',
             'example_certificate': True
         }

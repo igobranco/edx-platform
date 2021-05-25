@@ -2,7 +2,6 @@
 import logging
 
 import dateutil
-import six
 from pytz import UTC
 from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
@@ -37,6 +36,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
         * grades
         * certificates
         * updates
+        * proctoring
         * graded_only (boolean) - whether to included graded subsections only in the assignments information.
         * validate_oras (boolean) - whether to check the dates in ORA problems in addition to assignment due dates.
 
@@ -60,6 +60,9 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
             * has_certificate - whether the course has a certificate.
         * updates
             * has_update - whether at least one course update exists.
+        * proctoring
+            * needs_proctoring_escalation_email - whether the course requires a proctoring escalation email
+            * has_proctoring_escalation_email - whether the course has a proctoring escalation email
 
     """
     @course_author_access_required
@@ -96,6 +99,10 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
                 response.update(
                     updates=self._updates_validation(course, request)
                 )
+            if get_bool_param(request, 'proctoring', all_requested):
+                response.update(
+                    proctoring=self._proctoring_validation(course)
+                )
 
         return Response(response)
 
@@ -118,7 +125,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
         ]
         assignments_with_dates_before_start = (
             [
-                {'id': six.text_type(a.location), 'display_name': a.display_name}
+                {'id': str(a.location), 'display_name': a.display_name}
                 for a in assignments_with_dates
                 if a.due < course.start
             ]
@@ -128,7 +135,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
         assignments_with_dates_after_end = (
             [
-                {'id': six.text_type(a.location), 'display_name': a.display_name}
+                {'id': str(a.location), 'display_name': a.display_name}
                 for a in assignments_with_dates
                 if a.due > course.end
             ]
@@ -144,7 +151,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
             ]
             assignments_with_dates_before_start = (
                 [
-                    {'id': six.text_type(a.location), 'display_name': a.display_name}
+                    {'id': str(a.location), 'display_name': a.display_name}
                     for a in assignments_with_dates
                     if a.due < course.start
                 ]
@@ -154,7 +161,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
             assignments_with_dates_after_end = (
                 [
-                    {'id': six.text_type(a.location), 'display_name': a.display_name}
+                    {'id': str(a.location), 'display_name': a.display_name}
                     for a in assignments_with_dates
                     if a.due > course.end
                 ]
@@ -175,14 +182,14 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
                     parent_unit = modulestore().get_item(ora.parent)
                     parent_assignment = modulestore().get_item(parent_unit.parent)
                     assignments_with_ora_dates_before_start.append({
-                        'id': six.text_type(parent_assignment.location),
+                        'id': str(parent_assignment.location),
                         'display_name': parent_assignment.display_name
                     })
                 if course.end and self._has_date_after_end(ora, course.end):
                     parent_unit = modulestore().get_item(ora.parent)
                     parent_assignment = modulestore().get_item(parent_unit.parent)
                     assignments_with_ora_dates_after_end.append({
-                        'id': six.text_type(parent_assignment.location),
+                        'id': str(parent_assignment.location),
                         'display_name': parent_assignment.display_name
                     })
 
@@ -326,3 +333,10 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
                     return True
 
         return False
+
+    def _proctoring_validation(self, course):
+        # A proctoring escalation email is currently only required for courses using Proctortrack
+        return dict(
+            needs_proctoring_escalation_email=course.proctoring_provider == 'proctortrack',
+            has_proctoring_escalation_email=bool(course.proctoring_escalation_email)
+        )

@@ -4,7 +4,6 @@
 import unittest
 
 from lxml import etree
-from mock import Mock  # lint-amnesty, pylint: disable=unused-import
 from opaque_keys.edx.locator import BlockUsageLocator, CourseLocator
 from xblock.field_data import DictFieldData
 from xblock.fields import ScopeIds
@@ -69,7 +68,7 @@ class AnnotatableBlockTestCase(unittest.TestCase):  # lint-amnesty, pylint: disa
 
         for color in self.annotatable.HIGHLIGHT_COLORS:
             el = etree.fromstring(xml.format(highlight=color))
-            value = 'annotatable-span highlight highlight-{highlight}'.format(highlight=color)
+            value = f'annotatable-span highlight highlight-{color}'
 
             expected_attr = {
                 'class': {
@@ -127,7 +126,7 @@ class AnnotatableBlockTestCase(unittest.TestCase):  # lint-amnesty, pylint: disa
     def test_extract_instructions(self):
         xmltree = etree.fromstring(self.sample_xml)
 
-        expected_xml = u"<div>Read the text.</div>"
+        expected_xml = "<div>Read the text.</div>"
         actual_xml = self.annotatable._extract_instructions(xmltree)  # lint-amnesty, pylint: disable=protected-access
         assert actual_xml is not None
         assert expected_xml.strip() == actual_xml.strip()

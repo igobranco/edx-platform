@@ -1,4 +1,4 @@
-"""  # lint-amnesty, pylint: disable=django-not-configured
+"""
 Platform support for Programs.
 
 This package is a thin wrapper around interactions with the Programs service,
@@ -15,7 +15,7 @@ from edx_toggles.toggles import LegacyWaffleSwitch, LegacyWaffleSwitchNamespace 
 PROGRAMS_WAFFLE_SWITCH_NAMESPACE = LegacyWaffleSwitchNamespace(name='programs')
 
 # This is meant to be enabled until https://openedx.atlassian.net/browse/LEARNER-5573 needs to be resolved
-ALWAYS_CALCULATE_PROGRAM_PRICE_AS_ANONYMOUS_USER = LegacyWaffleSwitch(
+ALWAYS_CALCULATE_PROGRAM_PRICE_AS_ANONYMOUS_USER = LegacyWaffleSwitch(  # lint-amnesty, pylint: disable=toggle-missing-annotation
     PROGRAMS_WAFFLE_SWITCH_NAMESPACE,
     'always_calculate_program_price_as_anonymous_user',
     __name__

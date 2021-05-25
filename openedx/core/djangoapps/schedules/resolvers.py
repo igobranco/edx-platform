@@ -1,4 +1,4 @@
-# lint-amnesty, pylint: disable=django-not-configured, missing-module-docstring
+# lint-amnesty, pylint: disable=missing-module-docstring
 
 import datetime
 import logging
@@ -8,7 +8,7 @@ import attr
 from django.conf import settings
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.contrib.staticfiles.templatetags.staticfiles import static
-from django.db.models import F, Q
+from django.db.models import Exists, F, OuterRef, Q
 from django.urls import reverse
 from edx_ace.recipient import Recipient
 from edx_ace.recipient_resolver import RecipientResolver
@@ -18,7 +18,9 @@ from lms.djangoapps.courseware.utils import verified_upgrade_deadline_link, can_
 from lms.djangoapps.discussion.notification_prefs.views import UsernameCipher
 from openedx.core.djangoapps.ace_common.template_context import get_base_template_context
 from openedx.core.djangoapps.course_date_signals.utils import get_expected_duration
-from openedx.core.djangoapps.schedules.config import COURSE_UPDATE_SHOW_UNSUBSCRIBE_WAFFLE_SWITCH
+from openedx.core.djangoapps.schedules.config import (
+    COURSE_UPDATE_SHOW_UNSUBSCRIBE_WAFFLE_SWITCH, query_external_updates
+)
 from openedx.core.djangoapps.schedules.content_highlights import get_week_highlights, get_next_section_highlights
 from openedx.core.djangoapps.schedules.exceptions import CourseUpdateDoesNotExist
 from openedx.core.djangoapps.schedules.message_types import CourseUpdate, InstructorLedCourseUpdate
@@ -86,7 +88,7 @@ class BinnedSchedulesBaseResolver(PrefixedDebugLoggerMixin, RecipientResolver):
         for (user, language, context) in self.schedules_for_bin():
             msg = msg_type.personalize(
                 Recipient(
-                    user.username,
+                    user.id,
                     self.override_recipient_email or user.email,
                 ),
                 language,
@@ -113,8 +115,8 @@ class BinnedSchedulesBaseResolver(PrefixedDebugLoggerMixin, RecipientResolver):
         """
         target_day = _get_datetime_beginning_of_day(self.target_datetime)
         schedule_day_equals_target_day_filter = {
-            'courseenrollment__schedule__{}__gte'.format(self.schedule_date_field): target_day,
-            'courseenrollment__schedule__{}__lt'.format(self.schedule_date_field): target_day + datetime.timedelta(days=1),  # lint-amnesty, pylint: disable=line-too-long
+            f'courseenrollment__schedule__{self.schedule_date_field}__gte': target_day,
+            f'courseenrollment__schedule__{self.schedule_date_field}__lt': target_day + datetime.timedelta(days=1),  # lint-amnesty, pylint: disable=line-too-long
         }
         users = User.objects.filter(
             courseenrollment__is_active=True,
@@ -127,8 +129,8 @@ class BinnedSchedulesBaseResolver(PrefixedDebugLoggerMixin, RecipientResolver):
         )
 
         schedule_day_equals_target_day_filter = {
-            '{}__gte'.format(self.schedule_date_field): target_day,
-            '{}__lt'.format(self.schedule_date_field): target_day + datetime.timedelta(days=1),
+            f'{self.schedule_date_field}__gte': target_day,
+            f'{self.schedule_date_field}__lt': target_day + datetime.timedelta(days=1),
         }
         schedules = Schedule.objects.select_related(
             'enrollment__user__profile',
@@ -142,6 +144,11 @@ class BinnedSchedulesBaseResolver(PrefixedDebugLoggerMixin, RecipientResolver):
             enrollment__user__in=users,
             enrollment__is_active=True,
             **schedule_day_equals_target_day_filter
+        ).annotate(
+            external_updates_enabled=Exists(query_external_updates(OuterRef('enrollment__user_id'),
+                                                                   OuterRef('enrollment__course_id'))),
+        ).exclude(
+            external_updates_enabled=True,
         ).order_by(order_by)
 
         schedules = self.filter_by_org(schedules)
@@ -363,7 +370,7 @@ class CourseUpdateResolver(BinnedSchedulesBaseResolver):
         for (user, language, context) in self.schedules_for_bin():
             msg = InstructorLedCourseUpdate().personalize(
                 Recipient(
-                    user.username,
+                    user.id,
                     self.override_recipient_email or user.email,
                 ),
                 language,
@@ -444,7 +451,7 @@ class CourseNextSectionUpdate(PrefixedDebugLoggerMixin, RecipientResolver):
         for (user, language, context) in schedules:
             msg = CourseUpdate().personalize(
                 Recipient(
-                    user.username,
+                    user.id,
                     self.override_recipient_email or user.email,
                 ),
                 language,

@@ -1,8 +1,6 @@
 """
 Tests for SAMLProviderConfig endpoints
 """
-
-import unittest
 import copy
 from uuid import uuid4
 from django.urls import reverse
@@ -16,7 +14,6 @@ from enterprise.models import EnterpriseCustomerIdentityProvider, EnterpriseCust
 from enterprise.constants import ENTERPRISE_ADMIN_ROLE, ENTERPRISE_LEARNER_ROLE
 from common.djangoapps.third_party_auth.tests.samlutils import set_jwt_cookie
 from common.djangoapps.third_party_auth.models import SAMLProviderConfig, SAMLConfiguration
-from common.djangoapps.third_party_auth.tests import testutil
 from common.djangoapps.third_party_auth.tests.utils import skip_unless_thirdpartyauth
 from common.djangoapps.third_party_auth.utils import convert_saml_slug_provider_id
 
@@ -51,7 +48,7 @@ class SAMLProviderConfigTests(APITestCase):
     """
     @classmethod
     def setUpTestData(cls):
-        super(SAMLProviderConfigTests, cls).setUpTestData()
+        super().setUpTestData()
         cls.user = User.objects.create_user(username='testuser', password='testpwd')
         cls.site, _ = Site.objects.get_or_create(domain='example.com')
         cls.enterprise_customer = EnterpriseCustomer.objects.create(
@@ -87,7 +84,7 @@ class SAMLProviderConfigTests(APITestCase):
         )
         urlbase = reverse('saml_provider_config-list')
         query_kwargs = {'enterprise_customer_uuid': ENTERPRISE_ID}
-        url = '{}?{}'.format(urlbase, urlencode(query_kwargs))
+        url = f'{urlbase}?{urlencode(query_kwargs)}'
 
         response = self.client.get(url, format='json')
 
@@ -105,7 +102,7 @@ class SAMLProviderConfigTests(APITestCase):
         """
         urlbase = reverse('saml_provider_config-list')
         query_kwargs = {'enterprise_customer_uuid': 'invalid_uuid'}
-        url = '{}?{}'.format(urlbase, urlencode(query_kwargs))
+        url = f'{urlbase}?{urlencode(query_kwargs)}'
 
         response = self.client.get(url, format='json')
 
@@ -123,7 +120,7 @@ class SAMLProviderConfigTests(APITestCase):
 
         urlbase = reverse('saml_provider_config-list')
         query_kwargs = {'enterprise_customer_uuid': ENTERPRISE_ID_NON_EXISTENT}
-        url = '{}?{}'.format(urlbase, urlencode(query_kwargs))
+        url = f'{urlbase}?{urlencode(query_kwargs)}'
         orig_count = SAMLProviderConfig.objects.count()
 
         response = self.client.get(url, format='json')
@@ -224,7 +221,7 @@ class SAMLProviderConfigTests(APITestCase):
         self.client.logout()
         urlbase = reverse('saml_provider_config-list')
         query_kwargs = {'enterprise_customer_uuid': ENTERPRISE_ID}
-        url = '{}?{}'.format(urlbase, urlencode(query_kwargs))
+        url = f'{urlbase}?{urlencode(query_kwargs)}'
         set_jwt_cookie(self.client, self.user, [(ENTERPRISE_LEARNER_ROLE, ENTERPRISE_ID)])
         response = self.client.get(url, format='json')
         assert response.status_code == status.HTTP_403_FORBIDDEN

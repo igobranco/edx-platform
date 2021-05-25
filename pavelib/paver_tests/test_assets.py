@@ -3,10 +3,10 @@
 
 import os
 from unittest import TestCase
+from unittest.mock import patch
 
 import ddt
 import paver.tasks
-from mock import patch
 from paver.easy import call_task, path
 from watchdog.observers import Observer
 
@@ -131,7 +131,7 @@ class TestPaverThemeAssetTasks(PaverTestCase):
             expected_messages.append('mkdir_p ' + repr(TEST_THEME_DIR / 'lms/static/css'))
             if force:
                 expected_messages.append(
-                    'rm -rf {test_theme_dir}/lms/static/css/*.css'.format(test_theme_dir=str(TEST_THEME_DIR))
+                    f'rm -rf {str(TEST_THEME_DIR)}/lms/static/css/*.css'
                 )
             expected_messages.append("libsass lms/static/sass")
             expected_messages.append(
@@ -148,10 +148,10 @@ class TestPaverThemeAssetTasks(PaverTestCase):
             )
             if force:
                 expected_messages.append(
-                    'rm -rf {test_theme_dir}/lms/static/css/*.css'.format(test_theme_dir=str(TEST_THEME_DIR))
+                    f'rm -rf {str(TEST_THEME_DIR)}/lms/static/css/*.css'
                 )
             expected_messages.append(
-                'libsass {test_theme_dir}/lms/static/sass'.format(test_theme_dir=str(TEST_THEME_DIR))
+                f'libsass {str(TEST_THEME_DIR)}/lms/static/sass'
             )
             if force:
                 expected_messages.append('rm -rf lms/static/css/*.css')
@@ -171,7 +171,7 @@ class TestPaverThemeAssetTasks(PaverTestCase):
             expected_messages.append('mkdir_p ' + repr(TEST_THEME_DIR / 'cms/static/css'))
             if force:
                 expected_messages.append(
-                    'rm -rf {test_theme_dir}/cms/static/css/*.css'.format(test_theme_dir=str(TEST_THEME_DIR))
+                    f'rm -rf {str(TEST_THEME_DIR)}/cms/static/css/*.css'
                 )
             expected_messages.append('libsass cms/static/sass')
             expected_messages.append(
@@ -182,10 +182,10 @@ class TestPaverThemeAssetTasks(PaverTestCase):
             )
             if force:
                 expected_messages.append(
-                    'rm -rf {test_theme_dir}/cms/static/css/*.css'.format(test_theme_dir=str(TEST_THEME_DIR))
+                    f'rm -rf {str(TEST_THEME_DIR)}/cms/static/css/*.css'
                 )
             expected_messages.append(
-                'libsass {test_theme_dir}/cms/static/sass'.format(test_theme_dir=str(TEST_THEME_DIR))
+                f'libsass {str(TEST_THEME_DIR)}/cms/static/sass'
             )
             if force:
                 expected_messages.append('rm -rf cms/static/css/*.css')
@@ -346,10 +346,10 @@ class TestCollectAssets(PaverTestCase):
         """
         for i, sys in enumerate(systems):
             msg = self.task_messages[i]
-            assert msg.startswith('python manage.py {}'.format(sys))
+            assert msg.startswith(f'python manage.py {sys}')
             assert ' collectstatic ' in msg
-            assert '--settings={}'.format(Env.DEVSTACK_SETTINGS) in msg
-            assert msg.endswith(' {}'.format(log_location))
+            assert f'--settings={Env.DEVSTACK_SETTINGS}' in msg
+            assert msg.endswith(f' {log_location}')
 
 
 @ddt.ddt
@@ -373,7 +373,7 @@ class TestUpdateAssetsTask(PaverTestCase):
         call_task('pavelib.assets.update_assets', args=cmd_args)
         self.assertTrue(
             self._is_substring_in_list(self.task_messages, expected_substring),
-            msg="{substring} not found in messages".format(substring=expected_substring)
+            msg=f"{expected_substring} not found in messages"
         )
 
     def _is_substring_in_list(self, messages_list, expected_substring):

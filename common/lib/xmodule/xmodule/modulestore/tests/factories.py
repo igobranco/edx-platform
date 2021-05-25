@@ -11,13 +11,12 @@ import traceback
 from collections import defaultdict
 from contextlib import contextmanager
 from uuid import uuid4
+from unittest.mock import patch
 
 import pymongo.message
 import pytz
-import six
 from factory import Factory, Sequence, lazy_attribute, lazy_attribute_sequence
 from factory.errors import CyclicDefinitionError
-from mock import patch
 from opaque_keys.edx.keys import UsageKey
 from opaque_keys.edx.locator import BlockUsageLocator
 from xblock.core import XBlock
@@ -26,13 +25,12 @@ from xmodule.course_module import Textbook
 from xmodule.modulestore import ModuleStoreEnum, prefer_xmodules
 from xmodule.modulestore.tests.sample_courses import TOY_BLOCK_INFO_TREE, default_block_info_tree
 from xmodule.tabs import CourseTab
-from xmodule.x_module import DEPRECATION_VSCOMPAT_EVENT  # lint-amnesty, pylint: disable=unused-import
 
 
 LOG = logging.getLogger(__name__)
 
 
-class Dummy(object):
+class Dummy:
     pass
 
 
@@ -46,7 +44,7 @@ class XModuleFactoryLock(threading.local):
     will be called.
     """
     def __init__(self):
-        super(XModuleFactoryLock, self).__init__()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().__init__()
         self._enabled = False
 
     def enable(self):
@@ -82,7 +80,7 @@ class XModuleFactory(Factory):
     # We have to give a model for Factory.
     # However, the class that we create is actually determined by the category
     # specified in the factory
-    class Meta(object):
+    class Meta:
         model = Dummy
 
     @lazy_attribute
@@ -156,7 +154,7 @@ class SampleCourseFactory(CourseFactory):
         user_id = kwargs.get('user_id', ModuleStoreEnum.UserID.test)
 
         with store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, None):
-            course = super(SampleCourseFactory, cls)._create(target_class, **kwargs)
+            course = super()._create(target_class, **kwargs)
 
             def create_sub_tree(parent_loc, block_info):
                 """Recursively creates a sub_tree on this parent_loc with this block."""
@@ -217,7 +215,7 @@ class ToyCourseFactory(SampleCourseFactory):
         }
         fields.update(kwargs)
 
-        toy_course = super(ToyCourseFactory, cls)._create(
+        toy_course = super()._create(
             target_class,
             **fields
         )
@@ -293,9 +291,9 @@ class ItemFactory(XModuleFactory):
     @lazy_attribute_sequence
     def display_name(self, n):  # lint-amnesty, pylint: disable=missing-function-docstring
         if self.descriptive_tag:
-            return "{} {} - {}".format(self.category, n, self.descriptive_tag)
+            return f"{self.category} {n} - {self.descriptive_tag}"
         else:
-            return "{} {}".format(self.category, n)
+            return f"{self.category} {n}"
 
     @lazy_attribute
     def location(self):  # lint-amnesty, pylint: disable=missing-function-docstring
@@ -326,7 +324,7 @@ class ItemFactory(XModuleFactory):
         return parent.location
 
     @classmethod
-    def _create(cls, target_class, **kwargs):  # lint-amnesty, pylint: disable=arguments-differ, unused-argument
+    def _create(cls, target_class, **kwargs):  # lint-amnesty, pylint: disable=arguments-differ, too-many-statements, unused-argument
         """
         Uses ``**kwargs``:
 
@@ -390,7 +388,7 @@ class ItemFactory(XModuleFactory):
                 template = clz.get_template(template_id)
                 assert template is not None
                 metadata.update(template.get('metadata', {}))
-                if not isinstance(data, six.string_types):
+                if not isinstance(data, str):
                     data.update(template.get('data'))
 
             # replace the display name with an optional parameter passed in from the caller
@@ -414,6 +412,7 @@ class ItemFactory(XModuleFactory):
                 module.submission_start = submission_start
             if submission_end:
                 module.submission_end = submission_end
+            store.update_item(module, user_id)
 
             # VS[compat] cdodge: This is a hack because static_tabs also have references from the course module, so
             # if we add one then we need to also add it to the policy information (i.e. metadata)
@@ -465,7 +464,7 @@ def check_number_of_calls(object_with_method, method_name, maximum_calls, minimu
     )
 
 
-class StackTraceCounter(object):
+class StackTraceCounter:
     """
     A class that counts unique stack traces underneath a particular stack frame.
     """
@@ -506,13 +505,13 @@ class StackTraceCounter(object):
                 try:
                     safe_args.append(repr(arg))
                 except Exception as exc:
-                    safe_args.append('<un-repr-able value: {}'.format(exc))
+                    safe_args.append(f'<un-repr-able value: {exc}')
             safe_kwargs = {}
             for key, kwarg in kwargs.items():
                 try:
                     safe_kwargs[key] = repr(kwarg)
                 except Exception as exc:
-                    safe_kwargs[key] = '<un-repr-able value: {}'.format(exc)
+                    safe_kwargs[key] = f'<un-repr-able value: {exc}'
 
             self._stacks[tuple(stack)][tuple(safe_args), tuple(safe_kwargs.items())] += 1
         else:
@@ -613,8 +612,8 @@ def check_sum_of_calls(object_, methods, maximum_calls, minimum_calls=1, include
                 messages.append("\n\n")
                 if include_arguments:
                     for (args, kwargs), count in stack_counter[stack].items():
-                        messages.append("      called {} times with:\n".format(count))
-                        messages.append("      args: {}\n".format(args))
+                        messages.append(f"      called {count} times with:\n")
+                        messages.append(f"      args: {args}\n")
                         messages.append("      kwargs: {}\n\n".format(dict(kwargs)))
 
     # verify that we called the methods within the desired range
@@ -626,7 +625,7 @@ def mongo_uses_error_check(store):
     Does mongo use the error check as a separate message?
     """
     if hasattr(store, 'modulestores'):
-        return any([mongo_uses_error_check(substore) for substore in store.modulestores])
+        return any(mongo_uses_error_check(substore) for substore in store.modulestores)
     return False
 
 

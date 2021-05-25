@@ -7,15 +7,16 @@ access control rules.
 import ddt
 from stevedore.extension import Extension, ExtensionManager
 
+from common.djangoapps.student.tests.factories import StaffFactory
+from common.djangoapps.student.tests.factories import UserFactory
 import lms.djangoapps.courseware.access as access
-from lms.djangoapps.courseware.tests.factories import StaffFactory, UserFactory
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.partitions.partitions import USER_PARTITION_SCHEME_NAMESPACE, Group, UserPartition
 
 
-class MemoryUserPartitionScheme(object):
+class MemoryUserPartitionScheme:
     """
     In-memory partition scheme for testing.
     """
@@ -80,7 +81,7 @@ class GroupAccessTestCase(ModuleStoreTestCase):
         modulestore().update_item(block, 1)
 
     def setUp(self):
-        super(GroupAccessTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         UserPartition.scheme_extensions = ExtensionManager.make_test_instance(
             [
@@ -176,7 +177,7 @@ class GroupAccessTestCase(ModuleStoreTestCase):
         side-effects in other tests.
         """
         UserPartition.scheme_extensions = None
-        super(GroupAccessTestCase, self).tearDown()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().tearDown()
 
     def check_access(self, user, block_location, is_accessible):
         """

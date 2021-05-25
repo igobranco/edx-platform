@@ -31,6 +31,10 @@ ACCOUNT_LIST = AccountViewSet.as_view({
     'get': 'list',
 })
 
+ACCOUNT_SEARCH_EMAILS = AccountViewSet.as_view({
+    'post': 'search_emails',
+})
+
 ACCOUNT_DETAIL = AccountViewSet.as_view({
     'get': 'retrieve',
     'patch': 'partial_update',
@@ -89,17 +93,22 @@ urlpatterns = [
         name='accounts_detail_api'
     ),
     url(
-        r'^v1/accounts/{}$'.format(settings.USERNAME_PATTERN),
+        r'^v1/accounts/search_emails$',
+        ACCOUNT_SEARCH_EMAILS,
+        name='accounts_search_emails_api'
+    ),
+    url(
+        fr'^v1/accounts/{settings.USERNAME_PATTERN}$',
         ACCOUNT_DETAIL,
         name='accounts_api'
     ),
     url(
-        r'^v1/accounts/{}/image$'.format(settings.USERNAME_PATTERN),
+        fr'^v1/accounts/{settings.USERNAME_PATTERN}/image$',
         ProfileImageView.as_view(),
         name='accounts_profile_image_api'
     ),
     url(
-        r'^v1/accounts/{}/deactivate/$'.format(settings.USERNAME_PATTERN),
+        fr'^v1/accounts/{settings.USERNAME_PATTERN}/deactivate/$',
         AccountDeactivationView.as_view(),
         name='accounts_deactivation'
     ),
@@ -109,17 +118,17 @@ urlpatterns = [
         name='deactivate_logout'
     ),
     url(
-        r'^v1/accounts/{}/verification_status/$'.format(settings.USERNAME_PATTERN),
+        fr'^v1/accounts/{settings.USERNAME_PATTERN}/verification_status/$',
         IDVerificationStatusView.as_view(),
         name='verification_status'
     ),
     url(
-        r'^v1/accounts/{}/verifications/$'.format(settings.USERNAME_PATTERN),
+        fr'^v1/accounts/{settings.USERNAME_PATTERN}/verifications/$',
         IDVerificationStatusDetailsView.as_view(),
         name='verification_details'
     ),
     url(
-        r'^v1/accounts/{}/retirement_status/$'.format(settings.USERNAME_PATTERN),
+        fr'^v1/accounts/{settings.USERNAME_PATTERN}/retirement_status/$',
         RETIREMENT_RETRIEVE,
         name='accounts_retirement_retrieve'
     ),
@@ -169,12 +178,12 @@ urlpatterns = [
         name='username_replacement'
     ),
     url(
-        r'^v1/preferences/{}$'.format(settings.USERNAME_PATTERN),
+        fr'^v1/preferences/{settings.USERNAME_PATTERN}$',
         PreferencesView.as_view(),
         name='preferences_api'
     ),
     url(
-        r'^v1/preferences/{}/(?P<preference_key>[a-zA-Z0-9_]+)$'.format(settings.USERNAME_PATTERN),
+        fr'^v1/preferences/{settings.USERNAME_PATTERN}/(?P<preference_key>[a-zA-Z0-9_]+)$',
         PreferencesDetailView.as_view(),
         name='preferences_detail_api'
     ),
@@ -183,7 +192,7 @@ urlpatterns = [
 
     # Moved from user_api/legacy_urls.py
     url(
-        r'^v1/preferences/(?P<pref_key>{})/users/$'.format(UserPreference.KEY_REGEX),
+        fr'^v1/preferences/(?P<pref_key>{UserPreference.KEY_REGEX})/users/$',
         user_api_views.PreferenceUsersListView.as_view()
     ),
 

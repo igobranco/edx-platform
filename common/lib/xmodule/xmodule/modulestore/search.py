@@ -3,10 +3,10 @@
 
 from logging import getLogger
 
-from six.moves import range
 
+from lms.djangoapps.courseware.access import has_access
 from lms.djangoapps.courseware.masquerade import MASQUERADE_SETTINGS_KEY
-from common.djangoapps.student.roles import GlobalStaff
+from common.djangoapps.student.roles import GlobalStaff  # lint-amnesty, pylint: disable=unused-import
 from .exceptions import ItemNotFoundError, NoPathToItem
 
 LOGGER = getLogger(__name__)
@@ -131,7 +131,7 @@ def get_child_locations(section_desc, request, course_id):
     Returns all child locations for a section. If user is learner or masquerading as learner,
     staff only blocks are excluded.
     """
-    is_staff_user = GlobalStaff().has_user(request.user) if request else False
+    is_staff_user = has_access(request.user, 'staff', course_id).has_access if request else False
 
     def is_masquerading_as_student():
         """
@@ -182,7 +182,7 @@ def navigation_index(position):
     try:
         navigation_position = int(position.split('_', 1)[0])
     except (ValueError, TypeError):
-        LOGGER.exception(u'Bad position %r passed to navigation_index, will assume first position', position)
+        LOGGER.exception('Bad position %r passed to navigation_index, will assume first position', position)
         navigation_position = 1
 
     return navigation_position

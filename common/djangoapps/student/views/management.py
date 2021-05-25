@@ -5,10 +5,10 @@ Student Views
 
 import datetime
 import logging
+import urllib.parse
 import uuid
 from collections import namedtuple
 
-import six
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -29,12 +29,11 @@ from edx_ace import ace
 from edx_ace.recipient import Recipient
 from edx_django_utils import monitoring as monitoring_utils
 from eventtracking import tracker
-from ipware.ip import get_ip
+from ipware.ip import get_client_ip
 # Note that this lives in LMS, so this dependency should be refactored.
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
 from pytz import UTC
-from six import text_type
 
 from common.djangoapps.track import views as track_views
 from lms.djangoapps.bulk_email.models import Optout
@@ -42,11 +41,12 @@ from common.djangoapps.course_modes.models import CourseMode
 from lms.djangoapps.courseware.courses import get_courses, sort_by_announcement, sort_by_start_date
 from common.djangoapps.edxmako.shortcuts import marketing_link, render_to_response, render_to_string  # lint-amnesty, pylint: disable=unused-import
 from common.djangoapps.entitlements.models import CourseEntitlement
+from common.djangoapps.student.helpers import get_next_url_for_login_page, get_redirect_url_with_host
 from openedx.core.djangoapps.ace_common.template_context import get_base_template_context
 from openedx.core.djangoapps.catalog.utils import get_programs_with_type
 from openedx.core.djangoapps.embargo import api as embargo_api
 from openedx.core.djangoapps.lang_pref import LANGUAGE_KEY
-from openedx.core.djangoapps.programs.models import ProgramsApiConfig
+from openedx.core.djangoapps.programs.models import ProgramsApiConfig  # lint-amnesty, pylint: disable=unused-import
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 from openedx.core.djangoapps.theming import helpers as theming_helpers
 from openedx.core.djangoapps.user_api.preferences import api as preferences_api
@@ -58,7 +58,7 @@ from common.djangoapps.student.message_types import AccountActivation, EmailChan
 from common.djangoapps.student.models import (  # lint-amnesty, pylint: disable=unused-import
     AccountRecovery,
     CourseEnrollment,
-    PendingEmailChange,
+    PendingEmailChange,  # unimport:skip
     PendingSecondaryEmailChange,
     Registration,
     RegistrationCookieConfiguration,
@@ -71,7 +71,6 @@ from common.djangoapps.student.models import (  # lint-amnesty, pylint: disable=
 )
 from common.djangoapps.student.signals import REFUND_ORDER
 from common.djangoapps.student.tasks import send_activation_email
-from common.djangoapps.student.text_me_the_app import TextMeTheAppFragmentView
 from common.djangoapps.util.db import outer_atomic
 from common.djangoapps.util.json_request import JsonResponse
 from xmodule.modulestore.django import modulestore
@@ -94,6 +93,7 @@ REGISTRATION_UTM_PARAMETERS = {
     'utm_content': 'registration_utm_content',
 }
 REGISTRATION_UTM_CREATED_AT = 'registration_utm_created_at'
+USER_ACCOUNT_ACTIVATED = 'edx.user.account.activated'
 
 
 def csrf_token(context):
@@ -103,7 +103,7 @@ def csrf_token(context):
     token = context.get('csrf_token', '')
     if token == 'NOTPROVIDED':
         return ''
-    return (HTML(u'<div style="display:none"><input type="hidden"'
+    return (HTML('<div style="display:none"><input type="hidden"'
                  ' name="csrfmiddlewaretoken" value="{}" /></div>').format(Text(token)))
 
 
@@ -164,7 +164,7 @@ def index(request, extra_context=None, user=AnonymousUser()):
     return render_to_response('index.html', context)
 
 
-def compose_activation_email(root_url, user, user_registration=None, route_enabled=False, profile_name=''):
+def compose_activation_email(user, user_registration=None, route_enabled=False, profile_name='', redirect_url=None):
     """
     Construct all the required params for the activation email
     through celery task
@@ -174,10 +174,7 @@ def compose_activation_email(root_url, user, user_registration=None, route_enabl
 
     message_context = generate_activation_email_context(user, user_registration)
     message_context.update({
-        'confirm_activation_link': '{root_url}/activate/{activation_key}'.format(
-            root_url=root_url,
-            activation_key=message_context['key']
-        ),
+        'confirm_activation_link': _get_activation_confirmation_link(message_context['key'], redirect_url),
         'route_enabled': route_enabled,
         'routed_user': user.username,
         'routed_user_email': user.email,
@@ -190,7 +187,7 @@ def compose_activation_email(root_url, user, user_registration=None, route_enabl
         dest_addr = user.email
 
     msg = AccountActivation().personalize(
-        recipient=Recipient(user.username, dest_addr),
+        recipient=Recipient(user.id, dest_addr),
         language=preferences_api.get_user_preference(user, LANGUAGE_KEY),
         user_context=message_context,
     )
@@ -198,7 +195,26 @@ def compose_activation_email(root_url, user, user_registration=None, route_enabl
     return msg
 
 
-def compose_and_send_activation_email(user, profile, user_registration=None):
+def _get_activation_confirmation_link(activation_key, redirect_url=None):
+    """
+    Helper function to build an activation confirmation URL given an activation_key.
+    The confirmation URL will include a "?next={redirect_url}" query if redirect_url
+    is not null.
+    """
+    root_url = configuration_helpers.get_value('LMS_ROOT_URL', settings.LMS_ROOT_URL)
+    confirmation_link = '{root_url}/activate/{activation_key}'.format(
+        root_url=root_url,
+        activation_key=activation_key,
+    )
+    if not redirect_url:
+        return confirmation_link
+
+    scheme, netloc, path, params, _, fragment = urllib.parse.urlparse(confirmation_link)
+    query = urllib.parse.urlencode({'next': redirect_url})
+    return urllib.parse.urlunparse((scheme, netloc, path, params, query, fragment))
+
+
+def compose_and_send_activation_email(user, profile, user_registration=None, redirect_url=None):
     """
     Construct all the required params and send the activation email
     through celery task
@@ -207,11 +223,11 @@ def compose_and_send_activation_email(user, profile, user_registration=None):
         user: current logged-in user
         profile: profile object of the current logged-in user
         user_registration: registration of the current logged-in user
+        redirect_url: The URL to redirect to after successful activation
     """
     route_enabled = settings.FEATURES.get('REROUTE_ACTIVATION_EMAIL')
 
-    root_url = configuration_helpers.get_value('LMS_ROOT_URL', settings.LMS_ROOT_URL)
-    msg = compose_activation_email(root_url, user, user_registration, route_enabled, profile.name)
+    msg = compose_activation_email(user, user_registration, route_enabled, profile.name, redirect_url)
 
     send_activation_email.delay(str(msg))
 
@@ -240,7 +256,7 @@ def course_run_refund_status(request, course_id):
         return JsonResponse({'course_refundable_status': ''}, status=406)
 
     refundable_status = course_enrollment.refundable()
-    logging.info("Course refund status for course {0} is {1}".format(course_id, refundable_status))
+    logging.info(f"Course refund status for course {course_id} is {refundable_status}")
 
     return JsonResponse({'course_refundable_status': refundable_status}, status=200)
 
@@ -307,7 +323,7 @@ def change_enrollment(request, check_access=True):
         course_id = CourseKey.from_string(request.POST.get("course_id"))
     except InvalidKeyError:
         log.warning(
-            u"User %s tried to %s with invalid course id: %s",
+            "User %s tried to %s with invalid course id: %s",
             user.username,
             action,
             request.POST.get("course_id"),
@@ -316,14 +332,14 @@ def change_enrollment(request, check_access=True):
 
     # Allow us to monitor performance of this transaction on a per-course basis since we often roll-out features
     # on a per-course basis.
-    monitoring_utils.set_custom_attribute('course_id', text_type(course_id))
+    monitoring_utils.set_custom_attribute('course_id', str(course_id))
 
     if action == "enroll":
         # Make sure the course exists
         # We don't do this check on unenroll, or a bad course id can't be unenrolled from
         if not modulestore().has_course(course_id):
             log.warning(
-                u"User %s tried to enroll in non-existent course %s",
+                "User %s tried to enroll in non-existent course %s",
                 user.username,
                 course_id
             )
@@ -340,14 +356,14 @@ def change_enrollment(request, check_access=True):
         # or if the user is enrolling in a country in which the course
         # is not available.
         redirect_url = embargo_api.redirect_if_blocked(
-            course_id, user=user, ip_address=get_ip(request),
+            course_id, user=user, ip_address=get_client_ip(request)[0],
             url=request.path
         )
         if redirect_url:
             return HttpResponse(redirect_url)
 
         if CourseEntitlement.check_for_existing_entitlement_and_enroll(user=user, course_run_key=course_id):
-            return HttpResponse(reverse('courseware', args=[six.text_type(course_id)]))
+            return HttpResponse(reverse('courseware', args=[str(course_id)]))
 
         # Check that auto enrollment is allowed for this course
         # (= the course is NOT behind a paywall)
@@ -371,7 +387,7 @@ def change_enrollment(request, check_access=True):
         # funnels users directly into the verification / payment flow)
         if CourseMode.has_verified_mode(available_modes) or CourseMode.has_professional_mode(available_modes):
             return HttpResponse(
-                reverse("course_modes_choose", kwargs={'course_id': text_type(course_id)})
+                reverse("course_modes_choose", kwargs={'course_id': str(course_id)})
             )
 
         # Otherwise, there is only one mode available (the default)
@@ -453,11 +469,11 @@ def disable_account_ajax(request):
         if account_action == 'disable':
             user_account.account_status = UserStanding.ACCOUNT_DISABLED
             context['message'] = _("Successfully disabled {}'s account").format(username)
-            log.info(u"%s disabled %s's account", request.user, username)
+            log.info("%s disabled %s's account", request.user, username)
         elif account_action == 'reenable':
             user_account.account_status = UserStanding.ACCOUNT_ENABLED
             context['message'] = _("Successfully reenabled {}'s account").format(username)
-            log.info(u"%s reenabled %s's account", request.user, username)
+            log.info("%s reenabled %s's account", request.user, username)
         else:
             context['message'] = _("Unexpected account status")
             return JsonResponse(context, status=400)
@@ -478,7 +494,7 @@ def user_signup_handler(sender, **kwargs):  # pylint: disable=unused-argument
         if site:
             user_signup_source = UserSignupSource(user=kwargs['instance'], site=site)
             user_signup_source.save()
-            log.info(u'user {} originated from a white labeled "Microsite"'.format(kwargs['instance'].id))
+            log.info('user {} originated from a white labeled "Microsite"'.format(kwargs['instance'].id))
 
 
 @ensure_csrf_cookie
@@ -487,7 +503,7 @@ def activate_account(request, key):
     When link in activation e-mail is clicked
     """
     # If request is in Studio call the appropriate view
-    if theming_helpers.get_project_root_name().lower() == u'cms':
+    if theming_helpers.get_project_root_name().lower() == 'cms':
         monitoring_utils.set_custom_attribute('student_activate_account', 'cms')
         return activate_account_studio(request, key)
 
@@ -495,26 +511,36 @@ def activate_account(request, key):
     # If not, the templates wouldn't be needed for cms, but we still need a way to activate for cms tests.
     monitoring_utils.set_custom_attribute('student_activate_account', 'lms')
     activation_message_type = None
+
+    invalid_message = HTML(_(
+        '{html_start}Your account could not be activated{html_end}'
+        'Something went wrong, please <a href="{support_url}">contact support</a> to resolve this issue.'
+    )).format(
+        support_url=configuration_helpers.get_value(
+            'ACTIVATION_EMAIL_SUPPORT_LINK', settings.ACTIVATION_EMAIL_SUPPORT_LINK
+        ) or settings.SUPPORT_SITE_LINK,
+        html_start=HTML('<p class="message-title">'),
+        html_end=HTML('</p>'),
+    )
+
     try:
         registration = Registration.objects.get(activation_key=key)
     except (Registration.DoesNotExist, Registration.MultipleObjectsReturned):
         activation_message_type = 'error'
         messages.error(
             request,
-            HTML(_(
-                '{html_start}Your account could not be activated{html_end}'
-                'Something went wrong, please <a href="{support_url}">contact support</a> to resolve this issue.'
-            )).format(
-                support_url=configuration_helpers.get_value(
-                    'ACTIVATION_EMAIL_SUPPORT_LINK', settings.ACTIVATION_EMAIL_SUPPORT_LINK
-                ) or settings.SUPPORT_SITE_LINK,
-                html_start=HTML('<p class="message-title">'),
-                html_end=HTML('</p>'),
-            ),
+            invalid_message,
             extra_tags='account-activation aa-icon'
         )
     else:
-        if registration.user.is_active:
+        if request.user.is_authenticated and request.user.id != registration.user.id:
+            activation_message_type = 'error'
+            messages.error(
+                request,
+                invalid_message,
+                extra_tags='account-activation aa-icon'
+            )
+        elif registration.user.is_active:
             activation_message_type = 'info'
             messages.info(
                 request,
@@ -528,6 +554,14 @@ def activate_account(request, key):
             registration.activate()
             # Success message for logged in users.
             message = _('{html_start}Success{html_end} You have activated your account.')
+
+            tracker.emit(
+                USER_ACCOUNT_ACTIVATED,
+                {
+                    "user_id": registration.user.id,
+                    "activation_timestamp": registration.activation_timestamp
+                }
+            )
 
             if not request.user.is_authenticated:
                 # Success message for logged out users
@@ -548,8 +582,19 @@ def activate_account(request, key):
                 extra_tags='account-activation aa-icon',
             )
 
+    # If a (safe) `next` parameter is provided in the request
+    # and it's not the same as the dashboard, redirect there.
+    # The `get_next_url_for_login_page()` function will only return a safe redirect URL.
+    # If the provided `next` URL is not safe, that function will fill `redirect_to`
+    # with a value of `reverse('dashboard')`.
+    if request.GET.get('next'):
+        redirect_to, root_url = get_next_url_for_login_page(request, include_host=True)
+        if redirect_to != reverse('dashboard'):
+            redirect_url = get_redirect_url_with_host(root_url, redirect_to)
+            return redirect(redirect_url)
+
     if should_redirect_to_authn_microfrontend() and not request.user.is_authenticated:
-        url_path = '/login?account_activation_status={}'.format(activation_message_type)
+        url_path = f'/login?account_activation_status={activation_message_type}'
         return redirect(settings.AUTHN_MICROFRONTEND_URL + url_path)
 
     return redirect('dashboard')
@@ -668,13 +713,13 @@ def do_email_change_request(user, new_email, activation_key=None, secondary_emai
 
     if secondary_email_change_request:
         msg = RecoveryEmailCreate().personalize(
-            recipient=Recipient(user.username, new_email),
+            recipient=Recipient(user.id, new_email),
             language=preferences_api.get_user_preference(user, LANGUAGE_KEY),
             user_context=message_context,
         )
     else:
         msg = EmailChange().personalize(
-            recipient=Recipient(user.username, new_email),
+            recipient=Recipient(user.id, new_email),
             language=preferences_api.get_user_preference(user, LANGUAGE_KEY),
             user_context=message_context,
         )
@@ -683,7 +728,7 @@ def do_email_change_request(user, new_email, activation_key=None, secondary_emai
         ace.send(msg)
     except Exception:
         from_address = configuration_helpers.get_value('email_from_address', settings.DEFAULT_FROM_EMAIL)
-        log.error(u'Unable to send email activation link to user from "%s"', from_address, exc_info=True)
+        log.error('Unable to send email activation link to user from "%s"', from_address, exc_info=True)
         raise ValueError(_('Unable to send email activation link. Please try again later.'))  # lint-amnesty, pylint: disable=raise-missing-from
 
     if not secondary_email_change_request:
@@ -774,7 +819,7 @@ def confirm_email_change(request, key):
         })
 
         msg = EmailChangeConfirmation().personalize(
-            recipient=Recipient(user.username, user.email),
+            recipient=Recipient(user.id, user.email),
             language=preferences_api.get_user_preference(user, LANGUAGE_KEY),
             user_context=message_context,
         )
@@ -799,7 +844,7 @@ def confirm_email_change(request, key):
         user.save()
         pec.delete()
         # And send it to the new email...
-        msg.recipient = Recipient(user.username, pec.new_email)
+        msg.recipient = Recipient(user.id, pec.new_email)
         try:
             ace.send(msg)
         except Exception:  # pylint: disable=broad-except
@@ -829,7 +874,7 @@ def change_email_settings(request):
         if optout_object:
             optout_object.delete()
         log.info(
-            u"User %s (%s) opted in to receive emails from course %s",
+            "User %s (%s) opted in to receive emails from course %s",
             user.username,
             user.email,
             course_id,
@@ -843,7 +888,7 @@ def change_email_settings(request):
     else:
         Optout.objects.get_or_create(user=user, course_id=course_key)
         log.info(
-            u"User %s (%s) opted out of receiving emails from course %s",
+            "User %s (%s) opted out of receiving emails from course %s",
             user.username,
             user.email,
             course_id,
@@ -856,19 +901,3 @@ def change_email_settings(request):
         )
 
     return JsonResponse({"success": True})
-
-
-@ensure_csrf_cookie
-def text_me_the_app(request):
-    """
-    Text me the app view.
-    """
-    text_me_fragment = TextMeTheAppFragmentView().render_to_fragment(request)
-    context = {
-        'nav_hidden': True,
-        'show_dashboard_tabs': True,
-        'show_program_listing': ProgramsApiConfig.is_enabled(),
-        'fragment': text_me_fragment
-    }
-
-    return render_to_response('text-me-the-app.html', context)

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This is the common settings file, intended to set sane defaults. If you have a
 piece of configuration that's dependent on a set of feature flags being set,
@@ -37,7 +36,6 @@ When refering to XBlocks, we use the entry-point name. For example,
 
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-
 # pylint: disable=unused-import, useless-suppression, wrong-import-order, wrong-import-position
 
 import importlib.util
@@ -158,6 +156,9 @@ BLOCK_STRUCTURES_SETTINGS = dict(
 ############################ FEATURE CONFIGURATION #############################
 
 PLATFORM_NAME = _('Your Platform Name Here')
+
+CONTACT_MAILING_ADDRESS = _('Your Contact Mailing Address Here')
+
 PLATFORM_DESCRIPTION = _('Your Platform Description Here')
 
 PLATFORM_FACEBOOK_ACCOUNT = "http://www.facebook.com/YourPlatformFacebookAccount"
@@ -349,13 +350,13 @@ FEATURES = {
     'ENABLE_COUNTRY_ACCESS': False,
     'ENABLE_CREDIT_API': False,
     'ENABLE_OAUTH2_PROVIDER': False,
-    'ENABLE_SYSADMIN_DASHBOARD': False,
     'ENABLE_MOBILE_REST_API': False,
     'CUSTOM_COURSES_EDX': False,
     'ENABLE_READING_FROM_MULTIPLE_HISTORY_TABLES': True,
     'SHOW_FOOTER_LANGUAGE_SELECTOR': False,
     'ENABLE_ENROLLMENT_RESET': False,
-
+    # Settings for course import olx validation
+    'ENABLE_COURSE_OLX_VALIDATION': False,
     # .. toggle_name: FEATURES['DISABLE_MOBILE_COURSE_AVAILABLE']
     # .. toggle_implementation: DjangoSetting
     # .. toggle_default: False
@@ -373,8 +374,6 @@ FEATURES = {
     #   default because enabling allows a method to bypass password policy.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2020-02-21
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: 'https://github.com/edx/edx-platform/pull/21616'
     'ENABLE_CHANGE_USER_PASSWORD_ADMIN': False,
 
@@ -431,6 +430,28 @@ FEATURES = {
     # .. toggle_warnings: Also set settings.LIBRARY_AUTHORING_MICROFRONTEND_URL and see
     #   REDIRECT_TO_LIBRARY_AUTHORING_MICROFRONTEND for rollout.
     'ENABLE_LIBRARY_AUTHORING_MICROFRONTEND': False,
+
+    # .. toggle_name: FEATURES['DISABLE_COURSE_CREATION']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: If set to True, it disables the course creation functionality and hides the "New Course"
+    #   button in studio.
+    #   It is important to note that the value of this flag only affects if the user doesn't have a staff role,
+    #   otherwise the course creation functionality will work as it should.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2013-12-02
+    # .. toggle_warnings: Another toggle DISABLE_LIBRARY_CREATION overrides DISABLE_COURSE_CREATION, if present.
+    'DISABLE_COURSE_CREATION': False,
+
+    # Can be turned off to disable the help link in the navbar
+    # .. toggle_name: FEATURES['ENABLE_HELP_LINK']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: True
+    # .. toggle_description: When True, a help link is displayed on the main navbar. Set False to hide it.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2021-03-05
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/26106
+    'ENABLE_HELP_LINK': True,
 }
 
 ENABLE_JASMINE = False
@@ -470,11 +491,6 @@ ENV_ROOT = REPO_ROOT.dirname()  # virtualenv dir /edx-platform is in
 COURSES_ROOT = ENV_ROOT / "data"
 
 GITHUB_REPO_ROOT = ENV_ROOT / "data"
-
-# TODO: This path modification exists as temporary support for deprecated import patterns.
-# It will be removed in an upcoming Open edX release.
-# See docs/decisions/0007-sys-path-modification-removal.rst
-sys.path.append(REPO_ROOT / 'import_shims' / 'studio')
 
 # For geolocation ip database
 GEOIP_PATH = REPO_ROOT / "common/static/data/geoip/GeoLite2-Country.mmdb"
@@ -968,6 +984,8 @@ HTTPS = 'on'
 ROOT_URLCONF = 'cms.urls'
 
 COURSE_IMPORT_EXPORT_BUCKET = ''
+COURSE_METADATA_EXPORT_BUCKET = ''
+
 ALTERNATE_WORKER_QUEUES = 'lms'
 
 STATIC_URL_BASE = '/static/'
@@ -1052,6 +1070,8 @@ derived('LOCALE_PATHS')
 MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 
 COURSE_IMPORT_EXPORT_STORAGE = 'django.core.files.storage.FileSystemStorage'
+COURSE_METADATA_EXPORT_STORAGE = 'django.core.files.storage.FileSystemStorage'
+
 
 ##### EMBARGO #####
 EMBARGO_SITE_REDIRECT_URL = None
@@ -1389,6 +1409,7 @@ INSTALLED_APPS = [
     'common.djangoapps.student.apps.StudentConfig',  # misleading name due to sharing with lms
     'openedx.core.djangoapps.course_groups',  # not used in cms (yet), but tests run
     'cms.djangoapps.xblock_config.apps.XBlockConfig',
+    'cms.djangoapps.export_course_metadata.apps.ExportCourseMetadataConfig',
 
     # New (Blockstore-based) XBlock runtime
     'openedx.core.djangoapps.xblock.apps.StudioXBlockAppConfig',
@@ -2023,15 +2044,10 @@ INTEGRATED_CHANNELS_API_CHUNK_TRANSMISSION_LIMIT = {}
 
 BASE_COOKIE_DOMAIN = 'localhost'
 
-# This limits the type of roles that are submittable via the `student` app's manual enrollment
-# audit API. While this isn't used in CMS, it is used via Enterprise which is installed in
-# the CMS. Without this, we get errors.
-MANUAL_ENROLLMENT_ROLE_CHOICES = ['Learner', 'Support', 'Partner']
-
 ############## Settings for the Discovery App ######################
 
 COURSE_CATALOG_URL_ROOT = 'http://localhost:8008'
-COURSE_CATALOG_API_URL = '{}/api/v1'.format(COURSE_CATALOG_URL_ROOT)
+COURSE_CATALOG_API_URL = f'{COURSE_CATALOG_URL_ROOT}/api/v1'
 
 # which access.py permission name to check in order to determine if a course is visible in
 # the course catalog. We default this to the legacy permission 'see_exists'.
@@ -2139,6 +2155,7 @@ ECOMMERCE_API_SIGNING_KEY = 'SET-ME-PLEASE'
 
 CREDENTIALS_INTERNAL_SERVICE_URL = 'http://localhost:8005'
 CREDENTIALS_PUBLIC_SERVICE_URL = 'http://localhost:8005'
+CREDENTIALS_SERVICE_USERNAME = 'credentials_service_user'
 
 ANALYTICS_DASHBOARD_URL = 'http://localhost:18110/courses'
 ANALYTICS_DASHBOARD_NAME = 'Your Platform Name Here Insights'
@@ -2275,8 +2292,15 @@ BLOCKSTORE_API_URL = 'http://localhost:18250/api/v1/'
 # in the blockstore-based XBlock runtime
 XBLOCK_RUNTIME_V2_EPHEMERAL_DATA_CACHE = 'default'
 
-# Blockstore data could contain S3 links, so this should be lower than Blockstore's AWS_QUERYSTRING_EXPIRE
-BLOCKSTORE_BUNDLE_CACHE_TIMEOUT = 169200
+# .. setting_name: BLOCKSTORE_BUNDLE_CACHE_TIMEOUT
+# .. setting_default: 3000
+# .. setting_description: Maximum time-to-live of cached Bundles fetched from
+#     Blockstore, in seconds. When the values returned from Blockstore have
+#     TTLs of their own (such as signed S3 URLs), the maximum TTL of this cache
+#     must be lower than the minimum TTL of those values.
+#     We use a default of 3000s (50mins) because temporary URLs are often
+#     configured to expire after one hour.
+BLOCKSTORE_BUNDLE_CACHE_TIMEOUT = 3000
 
 ###################### LEARNER PORTAL ################################
 LEARNER_PORTAL_URL_ROOT = 'https://learner-portal-localhost:18000'
@@ -2340,9 +2364,14 @@ DISABLE_DEPRECATED_SIGNUP_URL = False
 LOGISTRATION_RATELIMIT_RATE = '100/5m'
 LOGISTRATION_PER_EMAIL_RATELIMIT_RATE = '30/5m'
 LOGISTRATION_API_RATELIMIT = '20/m'
+LOGIN_AND_REGISTER_FORM_RATELIMIT = '100/5m'
+RESET_PASSWORD_TOKEN_VALIDATE_API_RATELIMIT = '30/7d'
+RESET_PASSWORD_API_RATELIMIT = '30/7d'
+
 
 ##### REGISTRATION RATE LIMIT SETTINGS #####
 REGISTRATION_VALIDATION_RATELIMIT = '30/7d'
+REGISTRATION_RATELIMIT = '60/7d'
 
 ##### PASSWORD RESET RATE LIMIT SETTINGS #####
 PASSWORD_RESET_IP_RATE = '1/m'
@@ -2384,16 +2413,6 @@ LOGO_TRADEMARK_URL = None
 FAVICON_URL = None
 DEFAULT_EMAIL_LOGO_URL = 'https://edx-cdn.org/v3/default/logo.png'
 
-# .. toggle_name: ERROR_ON_DEPRECATED_EDX_PLATFORM_IMPORTS
-# .. toggle_implementation: DjangoSetting
-# .. toggle_default: False
-# .. toggle_use_cases: temporary
-# .. toggle_creation_date: 2021-01-20
-# .. toggle_target_removal_date: 2021-01-27
-# .. toggle_tickets: https://github.com/edx/edx-platform/pull/25932
-# .. toggle_description: Whether to raise an exception where,
-#   normally, a DeprecatedEdxPlatformImportWarning would be raised.
-#   This will allow us to test dropping support for the deprecated
-#   import paths without yet removing all of the import_shims
-#   machinery.
-ERROR_ON_DEPRECATED_EDX_PLATFORM_IMPORTS = False
+############## Settings for course import olx validation ############################
+COURSE_OLX_VALIDATION_STAGE = 1
+COURSE_OLX_VALIDATION_IGNORE_LIST = None

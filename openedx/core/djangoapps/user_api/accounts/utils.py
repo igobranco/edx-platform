@@ -4,22 +4,24 @@ Utility methods for the account settings.
 
 
 import re
+from urllib.parse import urlparse  # pylint: disable=import-error
 
-import waffle
+import waffle  # lint-amnesty, pylint: disable=invalid-django-waffle-import
 from completion.waffle import ENABLE_COMPLETION_TRACKING_SWITCH
 from completion.models import BlockCompletion
 from django.conf import settings
 from django.utils.translation import ugettext as _
-from six import text_type
-from six.moves import range  # lint-amnesty, pylint: disable=unused-import
-from six.moves.urllib.parse import urlparse  # pylint: disable=import-error
+from social_django.models import UserSocialAuth
 
-from common.djangoapps.third_party_auth.config.waffle import ENABLE_MULTIPLE_SSO_ACCOUNTS_ASSOCIATION_TO_SAML_USER
+from common.djangoapps.student.models import AccountRecovery, Registration, get_retired_email_by_email
+from openedx.core.djangolib.oauth2_retirement_utils import retire_dot_oauth2_models
 from openedx.core.djangoapps.site_configuration.models import SiteConfiguration
 from openedx.core.djangoapps.theming.helpers import get_config_value_from_site_or_settings, get_current_site
 from openedx.core.djangoapps.user_api.config.waffle import ENABLE_MULTIPLE_USER_ENTERPRISES_FEATURE
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.exceptions import ItemNotFoundError
+
+from ..models import UserRetirementStatus
 
 ENABLE_SECONDARY_EMAIL_FEATURE_SWITCH = 'enable_secondary_email_feature'
 
@@ -63,7 +65,7 @@ def format_social_link(platform_name, new_social_link):
         return None
 
     # For security purposes, always build up the url rather than using input from user.
-    return 'https://www.{}{}'.format(url_stub, username)
+    return f'https://www.{url_stub}{username}'
 
 
 def _get_username_from_social_link(platform_name, new_social_link):
@@ -173,10 +175,10 @@ def retrieve_last_sitewide_block_completed(user):
     if not (lms_root and item):
         return
 
-    return u"{lms_root}/courses/{course_key}/jump_to/{location}".format(
+    return "{lms_root}/courses/{course_key}/jump_to/{location}".format(
         lms_root=lms_root,
-        course_key=text_type(item.location.course_key),
-        location=text_type(item.location),
+        course_key=str(item.location.course_key),
+        location=str(item.location),
     )
 
 
@@ -200,11 +202,26 @@ def is_multiple_user_enterprises_feature_enabled():
     return ENABLE_MULTIPLE_USER_ENTERPRISES_FEATURE.is_enabled()
 
 
-def is_multiple_sso_accounts_association_to_saml_user_enabled():
+def create_retirement_request_and_deactivate_account(user):
     """
-    Checks to see if the django-waffle switch for enabling the multiple sso accounts association to saml user is active
+    Adds user to retirement queue, unlinks social auth accounts, changes user passwords
+    and delete tokens and activation keys
+    """
+    # Add user to retirement queue.
+    UserRetirementStatus.create_retirement(user)
 
-    Returns:
-        Boolean value representing switch status
-    """
-    return ENABLE_MULTIPLE_SSO_ACCOUNTS_ASSOCIATION_TO_SAML_USER.is_enabled()
+    # Unlink LMS social auth accounts
+    UserSocialAuth.objects.filter(user_id=user.id).delete()
+
+    # Change LMS password & email
+    user.email = get_retired_email_by_email(user.email)
+    user.set_unusable_password()
+    user.save()
+
+    # TODO: Unlink social accounts & change password on each IDA.
+    # Remove the activation keys sent by email to the user for account activation.
+    Registration.objects.filter(user=user).delete()
+
+    # Delete OAuth tokens associated with the user.
+    retire_dot_oauth2_models(user)
+    AccountRecovery.retire_recovery_email(user.id)

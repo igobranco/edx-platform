@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This is the common settings file, intended to set sane defaults. If you have a
 piece of configuration that's dependent on a set of feature flags being set,
@@ -66,16 +65,11 @@ CC_MERCHANT_NAME = PLATFORM_NAME
 PLATFORM_FACEBOOK_ACCOUNT = "http://www.facebook.com/YourPlatformFacebookAccount"
 PLATFORM_TWITTER_ACCOUNT = "@YourPlatformTwitterAccount"
 
-
 ENABLE_JASMINE = False
 
 LMS_ROOT_URL = 'https://localhost:18000'
 LMS_INTERNAL_ROOT_URL = LMS_ROOT_URL
 LMS_ENROLLMENT_API_PATH = "/api/enrollment/v1/"
-
-# Default choices for role dropdown in the membership tab of the instructor dashboard
-# This setting is used when a site does not define its own choices via site configuration
-MANUAL_ENROLLMENT_ROLE_CHOICES = ['Learner', 'Support', 'Partner']
 
 # List of logout URIs for each IDA that the learner should be logged out of when they logout of the LMS. Only applies to
 # IDA for which the social auth flow uses DOT (Django OAuth Toolkit).
@@ -90,10 +84,18 @@ FEATURES = {
     #   by course staff.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2015-09-04
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/2425
     'DISPLAY_DEBUG_INFO_TO_STAFF': True,
+
+    # .. toggle_name: FEATURES['DISPLAY_HISTOGRAMS_TO_STAFF']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: This displays histograms in the Staff Debug Info panel to course staff.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2014-02-13
+    # .. toggle_warnings: Generating histograms requires scanning the courseware_studentmodule table on each view. This
+    #   can make staff access to courseware very slow on large courses.
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/2425
     'DISPLAY_HISTOGRAMS_TO_STAFF': False,  # For large courses this slows down courseware access for staff.
 
     'REROUTE_ACTIVATION_EMAIL': False,  # nonempty string = address for all activation emails
@@ -105,7 +107,6 @@ FEATURES = {
     #   date.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2012-07-24
-    # .. toggle_target_removal_date: None
     # .. toggle_warnings: This will cause ALL courses to be immediately visible.
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/17913
     ## DO NOT SET TO True IN THIS FILE
@@ -131,14 +132,20 @@ FEATURES = {
     # .. toggle_description: Add PDF and HTML textbook tabs to the courseware.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2014-03-27
-    # .. toggle_target_removal_date: None
     # .. toggle_warnings: For consistency in user-experience, keep the value in sync with the setting of the same name
     #   in the CMS.
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/3064
     'ENABLE_TEXTBOOK': True,
 
-    # discussion home panel, which includes a subscription on/off setting for discussion digest emails.
-    # this should remain off in production until digest notifications are online.
+    # .. toggle_name: FEATURES['ENABLE_DISCUSSION_HOME_PANEL']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: True
+    # .. toggle_description: Hides or displays a welcome panel under the Discussion tab, which includes a subscription
+    #   on/off setting for discussion digest emails.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2013-07-30
+    # .. toggle_warnings: This should remain off in production until digest notifications are online.
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/520
     'ENABLE_DISCUSSION_HOME_PANEL': False,
 
     # .. toggle_name: FEATURES['ENABLE_DISCUSSION_EMAIL_DIGEST']
@@ -164,8 +171,6 @@ FEATURES = {
     #   regular expression defined by USERNAME_REGEX_PARTIAL.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2017-06-27
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/14729
     'ENABLE_UNICODE_USERNAME': False,
 
@@ -187,22 +192,7 @@ FEATURES = {
     # .. toggle_description: None
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2013-04-13
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
-    # .. toggle_tickets: None
     'ENABLE_MASQUERADE': True,
-
-    # .. toggle_name: FEATURES['ENABLE_SYSADMIN_DASHBOARD']
-    # .. toggle_implementation: DjangoSetting
-    # .. toggle_default: False
-    # .. toggle_description: enables dashboard at /syadmin/ for django staff, for seeing overview of system status, for
-    #   deleting and loading courses, for seeing log of git imports of courseware. Note that some views are noopen_edx
-    # .. toggle_use_cases: open_edx
-    # .. toggle_creation_date: 2013-12-12
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: This feature is not supported anymore and should have a target removal date.
-    # .. toggle_tickets: None
-    'ENABLE_SYSADMIN_DASHBOARD': False,  # sysadmin dashboard, to see what courses are loaded, to delete & load courses
 
     # .. toggle_name: FEATURES['DISABLE_LOGIN_BUTTON']
     # .. toggle_implementation: DjangoSetting
@@ -211,9 +201,6 @@ FEATURES = {
     #   Change is only at the UI level. Used in systems where login is automatic, eg MIT SSL
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2013-12-03
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
-    # .. toggle_tickets: None
     'DISABLE_LOGIN_BUTTON': False,
 
     # .. toggle_name: FEATURES['ENABLE_OAUTH2_PROVIDER']
@@ -225,7 +212,6 @@ FEATURES = {
     # .. toggle_creation_date: 2014-09-09
     # .. toggle_target_removal_date: None
     # .. toggle_warnings: This temporary feature toggle does not have a target removal date.
-    # .. toggle_tickets: None
     'ENABLE_OAUTH2_PROVIDER': False,
 
     # .. toggle_name: FEATURES['ENABLE_XBLOCK_VIEW_ENDPOINT']
@@ -236,8 +222,6 @@ FEATURES = {
     #   https://github.com/edx-solutions/jquery-xblock
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2014-03-14
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/2968
     'ENABLE_XBLOCK_VIEW_ENDPOINT': False,
 
@@ -256,6 +240,16 @@ FEATURES = {
     # .. toggle_warnings: This Effects views and templates.
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/1073
     'COURSES_ARE_BROWSABLE': True,
+
+    # Can be turned off to disable the help link in the navbar
+    # .. toggle_name: FEATURES['ENABLE_HELP_LINK']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: True
+    # .. toggle_description: When True, a help link is displayed on the main navbar. Set False to hide it.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2021-03-05
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/26106
+    'ENABLE_HELP_LINK': True,
 
     # .. toggle_name: FEATURES['HIDE_DASHBOARD_COURSES_UNTIL_ACTIVATED']
     # .. toggle_implementation: DjangoSetting
@@ -301,11 +295,23 @@ FEATURES = {
     # True.
     'INDIVIDUAL_DUE_DATES': False,
 
-    # Enable Custom Courses for EdX
+    # .. toggle_name: CUSTOM_COURSES_EDX
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Set to True to enable Custom Courses for edX, a feature that is more commonly known as
+    #   CCX. Documentation for configuring and using this feature is available at
+    #   https://edx.readthedocs.io/projects/open-edx-ca/en/latest/set_up_course/custom_courses.html
+    # .. toggle_warnings: When set to true, 'lms.djangoapps.ccx.overrides.CustomCoursesForEdxOverrideProvider' will
+    #    be added to MODULESTORE_FIELD_OVERRIDE_PROVIDERS
+    # .. toggle_use_cases: opt_in, circuit_breaker
+    # .. toggle_creation_date: 2015-04-10
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/6636
     'CUSTOM_COURSES_EDX': False,
 
     # Toggle to enable certificates of courses on dashboard
     'ENABLE_VERIFIED_CERTIFICATES': False,
+    # Settings for course import olx validation
+    'ENABLE_COURSE_OLX_VALIDATION': False,
 
     # .. toggle_name: FEATURES['DISABLE_HONOR_CERTIFICATES']
     # .. toggle_implementation: DjangoSetting
@@ -314,14 +320,22 @@ FEATURES = {
     #   allows verified certificates, like courses.edx.org.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2019-05-14
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://openedx.atlassian.net/browse/PROD-269
     'DISABLE_HONOR_CERTIFICATES': False,  # Toggle to disable honor certificates
 
     'DISABLE_AUDIT_CERTIFICATES': False,  # Toggle to disable audit certificates
 
-    # for acceptance and load testing
+    # .. toggle_name: FEATURES['AUTOMATIC_AUTH_FOR_TESTING']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Set to True to perform acceptance and load test. Auto auth view is responsible for load
+    #   testing and is controlled by this feature flag. Auto-auth causes issues in Bok Choy tests because it resets the
+    #   requesting user. Session verification (of CacheBackedAuthenticationMiddleware) is a security feature, but it
+    #   can be turned off by enabling this feature flag.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2013-07-25
+    # .. toggle_warnings: If this has been set to True then the account activation email will be skipped.
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/417
     'AUTOMATIC_AUTH_FOR_TESTING': False,
 
     # .. toggle_name: FEATURES['RESTRICT_AUTOMATIC_AUTH']
@@ -333,8 +347,6 @@ FEATURES = {
     #   querystring parameters.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2018-05-07
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://openedx.atlassian.net/browse/TE-2545
     'RESTRICT_AUTOMATIC_AUTH': True,
 
@@ -344,9 +356,7 @@ FEATURES = {
     # .. toggle_description: Enable the login micro frontend.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2018-05-07
-    # .. toggle_target_removal_date: None
     # .. toggle_warnings: The login MFE domain name should be listed in LOGIN_REDIRECT_WHITELIST.
-    # .. toggle_tickets: None
     'ENABLE_LOGIN_MICROFRONTEND': False,
 
     # .. toggle_name: FEATURES['SKIP_EMAIL_VALIDATION']
@@ -356,9 +366,7 @@ FEATURES = {
     #   Beware, as this leaves the door open to potential spam abuse.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2018-05-07
-    # .. toggle_target_removal_date: None
     # .. toggle_warnings: The login MFE domain name should be listed in LOGIN_REDIRECT_WHITELIST.
-    # .. toggle_tickets: None
     'SKIP_EMAIL_VALIDATION': False,
 
     # .. toggle_name: FEATURES['ENABLE_COSMETIC_DISPLAY_PRICE']
@@ -368,12 +376,22 @@ FEATURES = {
     #   cosmetic price is used when there is no registration price associated to the course.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2014-10-10
-    # .. toggle_target_removal_date: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/6876
     # .. toggle_warnings: The use case of this feature toggle is uncertain.
     'ENABLE_COSMETIC_DISPLAY_PRICE': False,
 
     # Automatically approve student identity verification attempts
+    # .. toggle_name: FEATURES['AUTOMATIC_VERIFY_STUDENT_IDENTITY_FOR_TESTING']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: If set to True, then we want to skip posting anything to Software Secure. Bypass posting
+    #   anything to Software Secure if the auto verify feature for testing is enabled. We actually don't even create
+    #   the message because that would require encryption and message signing that rely on settings.VERIFY_STUDENT
+    #   values that aren't set in dev. So we just pretend like we successfully posted and automatically approve student
+    #   identity verification attempts.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2013-10-03
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/1184
     'AUTOMATIC_VERIFY_STUDENT_IDENTITY_FOR_TESTING': False,
 
     # Maximum number of rows to include in the csv file for downloading problem responses.
@@ -404,8 +422,18 @@ FEATURES = {
     # Hide any Personally Identifiable Information from application logs
     'SQUELCH_PII_IN_LOGS': True,
 
-    # Toggles the embargo functionality, which blocks users from
-    # the site or courses based on their location.
+    # .. toggle_name: FEATURES['EMBARGO']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Turns on embargo functionality, which blocks users from
+    #   the site or courses based on their location. Embargo can restrict users by states
+    #   and whitelist/blacklist (IP Addresses (ie. 10.0.0.0), Networks (ie. 10.0.0.0/24)), or the user profile country.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2014-02-27
+    # .. toggle_target_removal_date: None
+    # .. toggle_warnings: reverse proxy should be configured appropriately for example Client IP address headers
+    #   (e.g HTTP_X_FORWARDED_FOR) should be configured.
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/2749
     'EMBARGO': False,
 
     # Whether the Wiki subsystem should be accessible via the direct /wiki/ paths. Setting this to True means
@@ -422,9 +450,6 @@ FEATURES = {
     #   backends with the AUTHENTICATION_BACKENDS setting.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2014-09-15
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
-    # .. toggle_tickets: None
     'ENABLE_THIRD_PARTY_AUTH': False,
 
     # .. toggle_name: FEATURES['ENABLE_MKTG_SITE']
@@ -433,10 +458,8 @@ FEATURES = {
     # .. toggle_description: Toggle to enable alternate urls for marketing links.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2014-03-24
-    # .. toggle_target_removal_date: None
     # .. toggle_warnings: When this is enabled, the MKTG_URLS setting should be defined. The use case of this feature
     #   toggle is uncertain.
-    # .. toggle_tickets: None
     'ENABLE_MKTG_SITE': False,
 
     # Prevent concurrent logins per user
@@ -461,8 +484,6 @@ FEATURES = {
     #   by their start dates, latest first.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2015-03-27
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/7548
     'ENABLE_COURSE_SORTING_BY_START_DATE': True,
 
@@ -474,8 +495,6 @@ FEATURES = {
     #   unified course tab (when the DISABLE_UNIFIED_COURSE_TAB_FLAG waffle is not enabled).
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2019-01-15
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/19604
     'ENABLE_COURSE_HOME_REDIRECT': True,
 
@@ -490,8 +509,6 @@ FEATURES = {
     #   specific configuration.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2016-06-24
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://openedx.atlassian.net/browse/OSPR-1320
     'ENABLE_COMBINED_LOGIN_REGISTRATION_FOOTER': False,
 
@@ -589,13 +606,32 @@ FEATURES = {
     #   license information to the courseware.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2015-05-14
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/7315
     'LICENSING': False,
 
-    # Certificates Web/HTML Views
+    # .. toggle_name: FEATURES['CERTIFICATES_HTML_VIEW']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Set to True to enable course certificates on your instance of Open edX.
+    # .. toggle_warnings: You must enable this feature flag in both Studio and the LMS and complete the configuration tasks
+    #   described here:
+    #   https://edx.readthedocs.io/projects/edx-installing-configuring-and-running/en/latest/configuration/enable_certificates.html  pylint: disable=line-too-long,useless-suppression
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2015-03-13
+    # .. toggle_target_removal_date: None
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/7113
     'CERTIFICATES_HTML_VIEW': False,
+
+    # .. toggle_name: FEATURES['CUSTOM_CERTIFICATE_TEMPLATES_ENABLED']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Set to True to enable custom certificate templates which are configured via Django admin.
+    # .. toggle_warnings: None
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2015-08-13
+    # .. toggle_target_removal_date: None
+    # .. toggle_tickets: https://openedx.atlassian.net/browse/SOL-1044
+    'CUSTOM_CERTIFICATE_TEMPLATES_ENABLED': False,
 
     # .. toggle_name: FEATURES['ENABLE_COURSE_DISCOVERY']
     # .. toggle_implementation: DjangoSetting
@@ -609,6 +645,17 @@ FEATURES = {
     # .. toggle_warnings: The COURSE_DISCOVERY_MEANINGS setting should be properly defined.
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/7845
     'ENABLE_COURSE_DISCOVERY': False,
+
+    # .. toggle_name: FEATURES['ENABLE_COURSE_FILENAME_CCX_SUFFIX']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: If set to True, CCX ID will be included in the generated filename for CCX courses.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2021-03-16
+    # .. toggle_target_removal_date: None
+    # .. toggle_tickets: None
+    # .. toggle_warnings: Turning this feature ON will affect all generated filenames which are related to CCX courses.
+    'ENABLE_COURSE_FILENAME_CCX_SUFFIX': False,
 
     # Setting for overriding default filtering facets for Course discovery
     # COURSE_DISCOVERY_FILTERS = ["org", "language", "modes"]
@@ -631,8 +678,6 @@ FEATURES = {
     # .. toggle_description: Enable to use special exams, aka timed and proctored exams.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2015-09-04
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://github.com/edx/edx-platform/pull/9744
     'ENABLE_SPECIAL_EXAMS': False,
 
@@ -649,7 +694,17 @@ FEATURES = {
     # .. toggle_tickets: https://openedx.atlassian.net/browse/SOL-1325
     'ENABLE_OPENBADGES': False,
 
-    # Enable LTI Provider feature.
+    # .. toggle_name: FEATURES['ENABLE_LTI_PROVIDER']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: When set to True, Open edX site can be used as an LTI Provider to other systems
+    #    and applications.
+    # .. toggle_warnings: After enabling this feature flag there are multiple steps invloved to configure edX
+    #    as LTI provider. Full guide is available here:
+    #    https://edx.readthedocs.io/projects/edx-installing-configuring-and-running/en/latest/configuration/lti/index.html
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2015-04-24
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/7689
     'ENABLE_LTI_PROVIDER': False,
 
     # .. toggle_name: FEATURES['SHOW_HEADER_LANGUAGE_SELECTOR']
@@ -685,11 +740,9 @@ FEATURES = {
     #   student activities to MySQL, in a separate database.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2020-11-05
-    # .. toggle_target_removal_date: None
     # .. toggle_warnings: Even though most Open edX instances run with a separate CSMH database, it may not always be
     #   the case. When disabling this feature flag, remember to remove "lms.djangoapps.coursewarehistoryextended"
     #   from the INSTALLED_APPS and the "StudentModuleHistoryExtendedRouter" from the DATABASE_ROUTERS.
-    # .. toggle_tickets: None
     'ENABLE_CSMH_EXTENDED': True,
 
     # Read from both the CSMH and CSMHE history tables.
@@ -708,13 +761,17 @@ FEATURES = {
     #   the signup page.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2017-04-12
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://openedx.atlassian.net/browse/YONK-513
     'ALLOW_PUBLIC_ACCOUNT_CREATION': True,
 
-    # Enable footer banner for cookie consent.
-    # See https://cookieconsent.insites.com/ for more.
+    # .. toggle_name: FEATURES['ENABLE_COOKIE_CONSENT']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Enable header banner for cookie consent using this service:
+    #   https://cookieconsent.insites.com/
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2017-03-03
+    # .. toggle_tickets: https://openedx.atlassian.net/browse/OSPR-1560
     'ENABLE_COOKIE_CONSENT': False,
 
     # Whether or not the dynamic EnrollmentTrackUserPartition should be registered.
@@ -759,7 +816,6 @@ FEATURES = {
     #   re-publishing the course) for changes to this flag to take effect.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2017-08-28
-    # .. toggle_target_removal_date: None
     # .. toggle_tickets: https://openedx.atlassian.net/browse/OSPR-1880
     'ENABLE_HTML_XBLOCK_STUDENT_VIEW_DATA': False,
 
@@ -772,8 +828,6 @@ FEATURES = {
     #   with. This setting can be overridden by a site-specific configuration.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2017-07-20
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: https://openedx.atlassian.net/browse/OSPR-1832
     'ENABLE_PASSWORD_RESET_FAILURE_EMAIL': False,
 
@@ -801,23 +855,8 @@ FEATURES = {
     #   default because enabling allows a method to bypass password policy.
     # .. toggle_use_cases: open_edx
     # .. toggle_creation_date: 2020-02-21
-    # .. toggle_target_removal_date: None
-    # .. toggle_warnings: None
     # .. toggle_tickets: 'https://github.com/edx/edx-platform/pull/21616'
     'ENABLE_CHANGE_USER_PASSWORD_ADMIN': False,
-
-    # .. toggle_name: FEATURES['ENABLE_COURSEWARE_MICROFRONTEND']
-    # .. toggle_implementation: DjangoSetting
-    # .. toggle_default: False
-    # .. toggle_description: Set to True to enable the Courseware MFE at the platform level for global staff (see
-    #   REDIRECT_TO_COURSEWARE_MICROFRONTEND for course rollout)
-    # .. toggle_use_cases: open_edx
-    # .. toggle_creation_date: 2020-03-05
-    # .. toggle_target_removal_date: None
-    # .. toggle_tickets: DEPR-109
-    # .. toggle_warnings: Also set settings.LEARNING_MICROFRONTEND_URL and see REDIRECT_TO_COURSEWARE_MICROFRONTEND for
-    #   rollout.
-    'ENABLE_COURSEWARE_MICROFRONTEND': False,
 
     # .. toggle_name: FEATURES['ENABLE_AUTHN_MICROFRONTEND']
     # .. toggle_implementation: DjangoSetting
@@ -828,7 +867,7 @@ FEATURES = {
     # .. toggle_target_removal_date: None
     # .. toggle_tickets: 'https://github.com/edx/edx-platform/pull/24908'
     # .. toggle_warnings: Also set settings.AUTHN_MICROFRONTEND_URL for rollout. This temporary feature
-    # toggle does not have a target removal date.
+    #   toggle does not have a target removal date.
     'ENABLE_AUTHN_MICROFRONTEND': False,
 
     ### ORA Feature Flags ###
@@ -837,7 +876,7 @@ FEATURES = {
     # .. toggle_default: False
     # .. toggle_description: A "work-around" feature toggle meant to help in cases where some file uploads are not
     #   discoverable.  If enabled, will iterate through all possible file key suffixes up to the max for displaying
-    #  file metadata in staff assessments.
+    #   file metadata in staff assessments.
     # .. toggle_use_cases: temporary
     # .. toggle_creation_date: 2020-03-03
     # .. toggle_target_removal_date: None
@@ -878,19 +917,28 @@ FEATURES = {
     # .. toggle_creation_date: 2020-12-09
     # .. toggle_target_removal_date: 2021-02-01
     # .. toggle_tickets: https://openedx.atlassian.net/browse/ENT-3818
-    # .. toggle_warnings: None.
     'ENABLE_COURSE_ASSESSMENT_GRADE_CHANGE_SIGNAL': False,
 
     # .. toggle_name: FEATURES['ALLOW_ADMIN_ENTERPRISE_COURSE_ENROLLMENT_DELETION']
     # .. toggle_implementation: DjangoSetting
     # .. toggle_default: False
     # .. toggle_description: If true, allows for the deletion of EnterpriseCourseEnrollment records via Django Admin.
-    # .. toggle_use_cases: enterprise
+    # .. toggle_use_cases: opt_in
     # .. toggle_creation_date: 2021-01-27
-    # .. toggle_target_removal_date: None
     # .. toggle_tickets: https://openedx.atlassian.net/browse/ENT-4022
-    # .. toggle_warnings: None.
     'ALLOW_ADMIN_ENTERPRISE_COURSE_ENROLLMENT_DELETION': False,
+
+    # .. toggle_name: FEATURES['ENABLE_BULK_USER_RETIREMENT']
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Set to True to enable bulk user retirement through REST API. This is disabled by
+    #   default.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2021-03-11
+    # .. toggle_target_removal_date: None
+    # .. toggle_warnings: None
+    # .. toggle_tickets: 'https://openedx.atlassian.net/browse/OSPR-5290'
+    'ENABLE_BULK_USER_RETIREMENT': False,
 }
 
 # Specifies extra XBlock fields that should available when requested via the Course Blocks API
@@ -942,11 +990,6 @@ COURSES_ROOT = ENV_ROOT / "data"
 NODE_MODULES_ROOT = REPO_ROOT / "node_modules"
 
 DATA_DIR = COURSES_ROOT
-
-# TODO: This path modification exists as temporary support for deprecated import patterns.
-# It will be removed in an upcoming Open edX release.
-# See docs/decisions/0007-sys-path-modification-removal.rst
-sys.path.append(REPO_ROOT / 'import_shims' / 'lms')
 
 # For Node.js
 
@@ -1243,8 +1286,6 @@ DATA_DIR = '/edx/var/edxapp/data'
 #   The banner is only rendered when the switch is activated.
 MAINTENANCE_BANNER_TEXT = 'Sample banner message'
 
-GIT_REPO_DIR = '/edx/var/edxapp/course_repos'
-
 DJFS = {
     'type': 'osfs',
     'directory_root': '/edx/var/edxapp/django-pyfs/static/django-pyfs',
@@ -1272,13 +1313,13 @@ WIKI_ENABLED = True
 
 COURSE_MODE_DEFAULTS = {
     'bulk_sku': None,
-    'currency': u'usd',
+    'currency': 'usd',
     'description': None,
     'expiration_datetime': None,
     'min_price': 0,
-    'name': _(u'Audit'),
+    'name': _('Audit'),
     'sku': None,
-    'slug': u'audit',
+    'slug': 'audit',
     'suggested_prices': '',
 }
 
@@ -1295,7 +1336,7 @@ USAGE_ID_PATTERN = r'(?P<usage_id>(?:i4x://?[^/]+/[^/]+/[^/]+/[^@]+(?:@[^/]+)?)|
 # However, backward compatibility with Ficus older releases is still maintained (space is still not valid)
 # in the AccountCreationForm and the user_api through the ENABLE_UNICODE_USERNAME feature flag.
 USERNAME_REGEX_PARTIAL = r'[\w .@_+-]+'
-USERNAME_PATTERN = r'(?P<username>{regex})'.format(regex=USERNAME_REGEX_PARTIAL)
+USERNAME_PATTERN = fr'(?P<username>{USERNAME_REGEX_PARTIAL})'
 
 
 ############################## EVENT TRACKING #################################
@@ -1399,6 +1440,7 @@ from xmodule.x_module import XModuleMixin
 # This should be moved into an XBlock Runtime/Application object
 # once the responsibility of XBlock creation is moved out of modulestore - cpennington
 XBLOCK_MIXINS = (LmsBlockMixin, InheritanceMixin, XModuleMixin, EditInfoMixin)
+XBLOCK_EXTRA_MIXINS = ()
 
 # .. setting_name: XBLOCK_SELECT_FUNCTION
 # .. setting_default: prefer_xmodules
@@ -1654,87 +1696,87 @@ LANGUAGE_COOKIE = "openedx-language-preference"
 
 # Sourced from http://www.localeplanet.com/icu/ and wikipedia
 LANGUAGES = [
-    ('en', u'English'),
-    ('rtl', u'Right-to-Left Test Language'),
-    ('eo', u'Dummy Language (Esperanto)'),  # Dummy languaged used for testing
-    ('fake2', u'Fake translations'),        # Another dummy language for testing (not pushed to prod)
+    ('en', 'English'),
+    ('rtl', 'Right-to-Left Test Language'),
+    ('eo', 'Dummy Language (Esperanto)'),  # Dummy languaged used for testing
+    ('fake2', 'Fake translations'),        # Another dummy language for testing (not pushed to prod)
 
-    ('am', u'አማርኛ'),  # Amharic
-    ('ar', u'العربية'),  # Arabic
-    ('az', u'azərbaycanca'),  # Azerbaijani
-    ('bg-bg', u'български (България)'),  # Bulgarian (Bulgaria)
-    ('bn-bd', u'বাংলা (বাংলাদেশ)'),  # Bengali (Bangladesh)
-    ('bn-in', u'বাংলা (ভারত)'),  # Bengali (India)
-    ('bs', u'bosanski'),  # Bosnian
-    ('ca', u'Català'),  # Catalan
-    ('ca@valencia', u'Català (València)'),  # Catalan (Valencia)
-    ('cs', u'Čeština'),  # Czech
-    ('cy', u'Cymraeg'),  # Welsh
-    ('da', u'dansk'),  # Danish
-    ('de-de', u'Deutsch (Deutschland)'),  # German (Germany)
-    ('el', u'Ελληνικά'),  # Greek
-    ('en-uk', u'English (United Kingdom)'),  # English (United Kingdom)
-    ('en@lolcat', u'LOLCAT English'),  # LOLCAT English
-    ('en@pirate', u'Pirate English'),  # Pirate English
-    ('es-419', u'Español (Latinoamérica)'),  # Spanish (Latin America)
-    ('es-ar', u'Español (Argentina)'),  # Spanish (Argentina)
-    ('es-ec', u'Español (Ecuador)'),  # Spanish (Ecuador)
-    ('es-es', u'Español (España)'),  # Spanish (Spain)
-    ('es-mx', u'Español (México)'),  # Spanish (Mexico)
-    ('es-pe', u'Español (Perú)'),  # Spanish (Peru)
-    ('et-ee', u'Eesti (Eesti)'),  # Estonian (Estonia)
-    ('eu-es', u'euskara (Espainia)'),  # Basque (Spain)
-    ('fa', u'فارسی'),  # Persian
-    ('fa-ir', u'فارسی (ایران)'),  # Persian (Iran)
-    ('fi-fi', u'Suomi (Suomi)'),  # Finnish (Finland)
-    ('fil', u'Filipino'),  # Filipino
-    ('fr', u'Français'),  # French
-    ('gl', u'Galego'),  # Galician
-    ('gu', u'ગુજરાતી'),  # Gujarati
-    ('he', u'עברית'),  # Hebrew
-    ('hi', u'हिन्दी'),  # Hindi
-    ('hr', u'hrvatski'),  # Croatian
-    ('hu', u'magyar'),  # Hungarian
-    ('hy-am', u'Հայերեն (Հայաստան)'),  # Armenian (Armenia)
-    ('id', u'Bahasa Indonesia'),  # Indonesian
-    ('it-it', u'Italiano (Italia)'),  # Italian (Italy)
-    ('ja-jp', u'日本語 (日本)'),  # Japanese (Japan)
-    ('kk-kz', u'қазақ тілі (Қазақстан)'),  # Kazakh (Kazakhstan)
-    ('km-kh', u'ភាសាខ្មែរ (កម្ពុជា)'),  # Khmer (Cambodia)
-    ('kn', u'ಕನ್ನಡ'),  # Kannada
-    ('ko-kr', u'한국어 (대한민국)'),  # Korean (Korea)
-    ('lt-lt', u'Lietuvių (Lietuva)'),  # Lithuanian (Lithuania)
-    ('ml', u'മലയാളം'),  # Malayalam
-    ('mn', u'Монгол хэл'),  # Mongolian
-    ('mr', u'मराठी'),  # Marathi
-    ('ms', u'Bahasa Melayu'),  # Malay
-    ('nb', u'Norsk bokmål'),  # Norwegian Bokmål
-    ('ne', u'नेपाली'),  # Nepali
-    ('nl-nl', u'Nederlands (Nederland)'),  # Dutch (Netherlands)
-    ('or', u'ଓଡ଼ିଆ'),  # Oriya
-    ('pl', u'Polski'),  # Polish
-    ('pt-br', u'Português (Brasil)'),  # Portuguese (Brazil)
-    ('pt-pt', u'Português (Portugal)'),  # Portuguese (Portugal)
-    ('ro', u'română'),  # Romanian
-    ('ru', u'Русский'),  # Russian
-    ('si', u'සිංහල'),  # Sinhala
-    ('sk', u'Slovenčina'),  # Slovak
-    ('sl', u'Slovenščina'),  # Slovenian
-    ('sq', u'shqip'),  # Albanian
-    ('sr', u'Српски'),  # Serbian
-    ('sv', u'svenska'),  # Swedish
-    ('sw', u'Kiswahili'),  # Swahili
-    ('ta', u'தமிழ்'),  # Tamil
-    ('te', u'తెలుగు'),  # Telugu
-    ('th', u'ไทย'),  # Thai
-    ('tr-tr', u'Türkçe (Türkiye)'),  # Turkish (Turkey)
-    ('uk', u'Українська'),  # Ukranian
-    ('ur', u'اردو'),  # Urdu
-    ('vi', u'Tiếng Việt'),  # Vietnamese
-    ('uz', u'Ўзбек'),  # Uzbek
-    ('zh-cn', u'中文 (简体)'),  # Chinese (China)
-    ('zh-hk', u'中文 (香港)'),  # Chinese (Hong Kong)
-    ('zh-tw', u'中文 (台灣)'),  # Chinese (Taiwan)
+    ('am', 'አማርኛ'),  # Amharic
+    ('ar', 'العربية'),  # Arabic
+    ('az', 'azərbaycanca'),  # Azerbaijani
+    ('bg-bg', 'български (България)'),  # Bulgarian (Bulgaria)
+    ('bn-bd', 'বাংলা (বাংলাদেশ)'),  # Bengali (Bangladesh)
+    ('bn-in', 'বাংলা (ভারত)'),  # Bengali (India)
+    ('bs', 'bosanski'),  # Bosnian
+    ('ca', 'Català'),  # Catalan
+    ('ca@valencia', 'Català (València)'),  # Catalan (Valencia)
+    ('cs', 'Čeština'),  # Czech
+    ('cy', 'Cymraeg'),  # Welsh
+    ('da', 'dansk'),  # Danish
+    ('de-de', 'Deutsch (Deutschland)'),  # German (Germany)
+    ('el', 'Ελληνικά'),  # Greek
+    ('en-uk', 'English (United Kingdom)'),  # English (United Kingdom)
+    ('en@lolcat', 'LOLCAT English'),  # LOLCAT English
+    ('en@pirate', 'Pirate English'),  # Pirate English
+    ('es-419', 'Español (Latinoamérica)'),  # Spanish (Latin America)
+    ('es-ar', 'Español (Argentina)'),  # Spanish (Argentina)
+    ('es-ec', 'Español (Ecuador)'),  # Spanish (Ecuador)
+    ('es-es', 'Español (España)'),  # Spanish (Spain)
+    ('es-mx', 'Español (México)'),  # Spanish (Mexico)
+    ('es-pe', 'Español (Perú)'),  # Spanish (Peru)
+    ('et-ee', 'Eesti (Eesti)'),  # Estonian (Estonia)
+    ('eu-es', 'euskara (Espainia)'),  # Basque (Spain)
+    ('fa', 'فارسی'),  # Persian
+    ('fa-ir', 'فارسی (ایران)'),  # Persian (Iran)
+    ('fi-fi', 'Suomi (Suomi)'),  # Finnish (Finland)
+    ('fil', 'Filipino'),  # Filipino
+    ('fr', 'Français'),  # French
+    ('gl', 'Galego'),  # Galician
+    ('gu', 'ગુજરાતી'),  # Gujarati
+    ('he', 'עברית'),  # Hebrew
+    ('hi', 'हिन्दी'),  # Hindi
+    ('hr', 'hrvatski'),  # Croatian
+    ('hu', 'magyar'),  # Hungarian
+    ('hy-am', 'Հայերեն (Հայաստան)'),  # Armenian (Armenia)
+    ('id', 'Bahasa Indonesia'),  # Indonesian
+    ('it-it', 'Italiano (Italia)'),  # Italian (Italy)
+    ('ja-jp', '日本語 (日本)'),  # Japanese (Japan)
+    ('kk-kz', 'қазақ тілі (Қазақстан)'),  # Kazakh (Kazakhstan)
+    ('km-kh', 'ភាសាខ្មែរ (កម្ពុជា)'),  # Khmer (Cambodia)
+    ('kn', 'ಕನ್ನಡ'),  # Kannada
+    ('ko-kr', '한국어 (대한민국)'),  # Korean (Korea)
+    ('lt-lt', 'Lietuvių (Lietuva)'),  # Lithuanian (Lithuania)
+    ('ml', 'മലയാളം'),  # Malayalam
+    ('mn', 'Монгол хэл'),  # Mongolian
+    ('mr', 'मराठी'),  # Marathi
+    ('ms', 'Bahasa Melayu'),  # Malay
+    ('nb', 'Norsk bokmål'),  # Norwegian Bokmål
+    ('ne', 'नेपाली'),  # Nepali
+    ('nl-nl', 'Nederlands (Nederland)'),  # Dutch (Netherlands)
+    ('or', 'ଓଡ଼ିଆ'),  # Oriya
+    ('pl', 'Polski'),  # Polish
+    ('pt-br', 'Português (Brasil)'),  # Portuguese (Brazil)
+    ('pt-pt', 'Português (Portugal)'),  # Portuguese (Portugal)
+    ('ro', 'română'),  # Romanian
+    ('ru', 'Русский'),  # Russian
+    ('si', 'සිංහල'),  # Sinhala
+    ('sk', 'Slovenčina'),  # Slovak
+    ('sl', 'Slovenščina'),  # Slovenian
+    ('sq', 'shqip'),  # Albanian
+    ('sr', 'Српски'),  # Serbian
+    ('sv', 'svenska'),  # Swedish
+    ('sw', 'Kiswahili'),  # Swahili
+    ('ta', 'தமிழ்'),  # Tamil
+    ('te', 'తెలుగు'),  # Telugu
+    ('th', 'ไทย'),  # Thai
+    ('tr-tr', 'Türkçe (Türkiye)'),  # Turkish (Turkey)
+    ('uk', 'Українська'),  # Ukranian
+    ('ur', 'اردو'),  # Urdu
+    ('vi', 'Tiếng Việt'),  # Vietnamese
+    ('uz', 'Ўзбек'),  # Uzbek
+    ('zh-cn', '中文 (简体)'),  # Chinese (China)
+    ('zh-hk', '中文 (香港)'),  # Chinese (Hong Kong)
+    ('zh-tw', '中文 (台灣)'),  # Chinese (Taiwan)
 ]
 
 LANGUAGE_DICT = dict(LANGUAGES)
@@ -1959,10 +2001,13 @@ MIDDLEWARE = [
 
     # A newer and safer request cache.
     'edx_django_utils.cache.middleware.RequestCacheMiddleware',
-    'edx_django_utils.monitoring.CachedCustomMonitoringMiddleware',
 
     # Generate code ownership attributes. Keep this immediately after RequestCacheMiddleware.
     'edx_django_utils.monitoring.CodeOwnerMonitoringMiddleware',
+
+    # Monitoring and logging middleware
+    'openedx.core.lib.request_utils.ExpectedErrorMiddleware',
+    'edx_django_utils.monitoring.CachedCustomMonitoringMiddleware',
 
     # Cookie monitoring
     'openedx.core.lib.request_utils.CookieMonitoringMiddleware',
@@ -2625,20 +2670,22 @@ HEARTBEAT_CELERY_ROUTING_KEY = HIGH_PRIORITY_QUEUE
 # .. setting_default: dict of settings
 # .. setting_description: Stores all the settings used by block structures and block structure
 #   related tasks. See BLOCK_STRUCTURES_SETTINGS[XXX] documentation for details of each setting.
-#   For more information, check https://openedx.atlassian.net/browse/TNL-5041.
+#   For more information, check https://github.com/edx/edx-platform/pull/13388.
 BLOCK_STRUCTURES_SETTINGS = dict(
     # .. setting_name: BLOCK_STRUCTURES_SETTINGS['COURSE_PUBLISH_TASK_DELAY']
     # .. setting_default: 30
     # .. setting_description: Delay, in seconds, after a new edit of a course is published before
     #   updating the block structures cache. This is needed for a better chance at getting
     #   the latest changes when there are secondary reads in sharded mongoDB clusters.
-    #   For more information, check https://openedx.atlassian.net/browse/TNL-5041.
+    #   For more information, check https://github.com/edx/edx-platform/pull/13388 and
+    #   https://github.com/edx/edx-platform/pull/14571.
     COURSE_PUBLISH_TASK_DELAY=30,
 
     # .. setting_name: BLOCK_STRUCTURES_SETTINGS['TASK_DEFAULT_RETRY_DELAY']
     # .. setting_default: 30
     # .. setting_description: Delay, in seconds, between retry attempts if a block structure task
-    #   fails. For more information, check https://openedx.atlassian.net/browse/TNL-5041.
+    #   fails. For more information, check https://github.com/edx/edx-platform/pull/13388 and
+    #   https://github.com/edx/edx-platform/pull/14571.
     TASK_DEFAULT_RETRY_DELAY=30,
 
     # .. setting_name: BLOCK_STRUCTURES_SETTINGS['TASK_MAX_RETRIES']
@@ -2646,7 +2693,8 @@ BLOCK_STRUCTURES_SETTINGS = dict(
     # .. setting_description: Maximum number of retries per block structure task.
     #   If the maximum number of retries is exceeded, then you can attempt to either manually run
     #   the celery task, or wait for it to be triggered again.
-    #   For more information, check https://openedx.atlassian.net/browse/TNL-5041.
+    #   For more information, check https://github.com/edx/edx-platform/pull/13388 and
+    #   https://github.com/edx/edx-platform/pull/14571.
     TASK_MAX_RETRIES=5,
 
     # .. toggle_name: BLOCK_STRUCTURES_SETTINGS['PRUNING_ACTIVE']
@@ -2657,11 +2705,12 @@ BLOCK_STRUCTURES_SETTINGS = dict(
     #   are kept can be specified in the `BlockStructureConfiguration`, which can be edited in
     #   Django Admin. The default number of versions that are kept is `5`.
     # .. toggle_warnings: This toggle will likely be deprecated and removed.
-    #   The annotation will be updated with the DEPR ticket once that process has started.
     # .. toggle_use_cases: temporary
     # .. toggle_creation_date: 2018-03-22
     # .. toggle_target_removal_date: 2018-06-22
-    # .. toggle_tickets: https://openedx.atlassian.net/browse/EDUCATOR-499
+    # .. toggle_tickets: https://github.com/edx/edx-platform/pull/14571,
+    #   https://github.com/edx/edx-platform/pull/17760,
+    #   https://openedx.atlassian.net/browse/DEPR-146
     PRUNING_ACTIVE=False,
 )
 
@@ -2812,7 +2861,6 @@ INSTALLED_APPS = [
     'eventtracking.django.apps.EventTrackingConfig',
     'common.djangoapps.util',
     'lms.djangoapps.certificates.apps.CertificatesConfig',
-    'lms.djangoapps.dashboard',
     'lms.djangoapps.instructor_task',
     'openedx.core.djangoapps.course_groups',
     'lms.djangoapps.bulk_email',
@@ -2856,7 +2904,6 @@ INSTALLED_APPS = [
 
     # Discussion forums
     'openedx.core.djangoapps.django_comment_common',
-    'openedx.core.djangoapps.discussions',
 
     # Notes
     'lms.djangoapps.edxnotes',
@@ -2868,9 +2915,6 @@ INSTALLED_APPS = [
     'rest_framework',
 
     'openedx.core.djangoapps.user_api',
-
-    # Shopping cart
-    'lms.djangoapps.shoppingcart',
 
     # Different Course Modes
     'common.djangoapps.course_modes.apps.CourseModesConfig',
@@ -3051,12 +3095,18 @@ INSTALLED_APPS = [
     # Database-backed Organizations App (http://github.com/edx/edx-organizations)
     'organizations',
 
+    # Bulk User Retirement
+    'lms.djangoapps.bulk_user_retirement',
+
     # management of user-triggered async tasks (course import/export, etc.)
     # This is only used by Studio, but is being added here because the
     # app-permissions script that assigns users to Django admin roles only runs
     # in the LMS process at the moment, so anything that has Django admin access
     # permissions needs to be listed as an LMS app or the script will fail.
     'user_tasks',
+
+    # Agreements
+    'openedx.core.djangoapps.agreements'
 ]
 
 ######################### CSRF #########################################
@@ -3077,6 +3127,7 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
     ),
+    'EXCEPTION_HANDLER': 'openedx.core.lib.request_utils.expected_error_exception_handler',
     'PAGE_SIZE': 10,
     'URL_FORMAT_OVERRIDE': None,
     'DEFAULT_THROTTLE_RATES': {
@@ -3087,6 +3138,7 @@ REST_FRAMEWORK = {
 }
 
 REGISTRATION_VALIDATION_RATELIMIT = '30/7d'
+REGISTRATION_RATELIMIT = '60/7d'
 
 SWAGGER_SETTINGS = {
     'DEFAULT_INFO': 'openedx.core.apidocs.api_info',
@@ -3172,28 +3224,28 @@ SOCIAL_MEDIA_FOOTER_DISPLAY = {
         # translate this the way that Facebook advertises in your language.
         "title": _("Facebook"),
         "icon": "fa-facebook-square",
-        "action": _(u"Like {platform_name} on Facebook")
+        "action": _("Like {platform_name} on Facebook")
     },
     "twitter": {
         # Translators: This is the website name of www.twitter.com.  Please
         # translate this the way that Twitter advertises in your language.
         "title": _("Twitter"),
         "icon": "fa-twitter-square",
-        "action": _(u"Follow {platform_name} on Twitter")
+        "action": _("Follow {platform_name} on Twitter")
     },
     "linkedin": {
         # Translators: This is the website name of www.linkedin.com.  Please
         # translate this the way that LinkedIn advertises in your language.
         "title": _("LinkedIn"),
         "icon": "fa-linkedin-square",
-        "action": _(u"Follow {platform_name} on LinkedIn")
+        "action": _("Follow {platform_name} on LinkedIn")
     },
     "instagram": {
         # Translators: This is the website name of www.instagram.com.  Please
         # translate this the way that Instagram advertises in your language.
         "title": _("Instagram"),
         "icon": "fa-instagram",
-        "action": _(u"Follow {platform_name} on Instagram")
+        "action": _("Follow {platform_name} on Instagram")
     },
     "tumblr": {
         # Translators: This is the website name of www.tumblr.com.  Please
@@ -3212,7 +3264,7 @@ SOCIAL_MEDIA_FOOTER_DISPLAY = {
         # translate this the way that Reddit advertises in your language.
         "title": _("Reddit"),
         "icon": "fa-reddit-square",
-        "action": _(u"Subscribe to the {platform_name} subreddit"),
+        "action": _("Subscribe to the {platform_name} subreddit"),
     },
     "vk": {
         # Translators: This is the website name of https://vk.com.  Please
@@ -3231,7 +3283,7 @@ SOCIAL_MEDIA_FOOTER_DISPLAY = {
         # translate this the way that YouTube advertises in your language.
         "title": _("Youtube"),
         "icon": "fa-youtube-square",
-        "action": _(u"Subscribe to the {platform_name} YouTube channel")
+        "action": _("Subscribe to the {platform_name} YouTube channel")
     }
 }
 
@@ -3268,8 +3320,6 @@ ENABLE_CREDIT_ELIGIBILITY = True
 #   Eligibility" section then appears for those courses in the LMS.
 # .. toggle_use_cases: open_edx
 # .. toggle_creation_date: 2015-06-17
-# .. toggle_target_removal_date: None
-# .. toggle_warnings: None
 # .. toggle_tickets: https://github.com/edx/edx-platform/pull/8550
 FEATURES['ENABLE_CREDIT_ELIGIBILITY'] = ENABLE_CREDIT_ELIGIBILITY
 
@@ -3293,11 +3343,16 @@ LOGIN_REDIRECT_WHITELIST = []
 
 ###################### Registration ##################################
 
-# For each of the fields, give one of the following values:
-# - 'required': to display the field, and make it mandatory
-# - 'optional': to display the field, and make it non-mandatory
-# - 'hidden': to not display the field
-
+# .. setting_name: REGISTRATION_EXTRA_FIELDS
+# .. setting_default: {'confirm_email': 'hidden', 'level_of_education': 'optional', 'gender': 'optional',
+#   'year_of_birth': 'optional', 'mailing_address': 'optional', 'goals': 'optional', 'honor_code': 'required',
+#   'terms_of_service': 'hidden', 'city': 'hidden', 'country': 'hidden'}
+# .. setting_description: The signup form may contain extra fields that are presented to every user. For every field, we
+#   can specifiy whether it should be "required": to display the field, and make it mandatory; "optional": to display
+#   the field, and make it non-mandatory; "hidden": to not display the field.
+#   When the terms of service are not visible and agreement to the honor code is required (the default), the signup page
+#   includes a paragraph that links to the honor code page (defined my MKTG_URLS["HONOR"]). This page might not be
+#   available for all Open edX platforms. In such cases, the "honor_code" registration field should be "hidden".
 REGISTRATION_EXTRA_FIELDS = {
     'confirm_email': 'hidden',
     'level_of_education': 'optional',
@@ -3502,192 +3557,192 @@ VIDEO_TRANSCRIPTS_MAX_AGE = 31536000
 # Note that this is used as the set of choices to the `code` field of the
 # `LanguageProficiency` model.
 ALL_LANGUAGES = [
-    [u"aa", u"Afar"],
-    [u"ab", u"Abkhazian"],
-    [u"af", u"Afrikaans"],
-    [u"ak", u"Akan"],
-    [u"sq", u"Albanian"],
-    [u"am", u"Amharic"],
-    [u"ar", u"Arabic"],
-    [u"an", u"Aragonese"],
-    [u"hy", u"Armenian"],
-    [u"as", u"Assamese"],
-    [u"av", u"Avaric"],
-    [u"ae", u"Avestan"],
-    [u"ay", u"Aymara"],
-    [u"az", u"Azerbaijani"],
-    [u"ba", u"Bashkir"],
-    [u"bm", u"Bambara"],
-    [u"eu", u"Basque"],
-    [u"be", u"Belarusian"],
-    [u"bn", u"Bengali"],
-    [u"bh", u"Bihari languages"],
-    [u"bi", u"Bislama"],
-    [u"bs", u"Bosnian"],
-    [u"br", u"Breton"],
-    [u"bg", u"Bulgarian"],
-    [u"my", u"Burmese"],
-    [u"ca", u"Catalan"],
-    [u"ch", u"Chamorro"],
-    [u"ce", u"Chechen"],
-    [u"zh", u"Chinese"],
-    [u"zh_HANS", u"Simplified Chinese"],
-    [u"zh_HANT", u"Traditional Chinese"],
-    [u"cu", u"Church Slavic"],
-    [u"cv", u"Chuvash"],
-    [u"kw", u"Cornish"],
-    [u"co", u"Corsican"],
-    [u"cr", u"Cree"],
-    [u"cs", u"Czech"],
-    [u"da", u"Danish"],
-    [u"dv", u"Divehi"],
-    [u"nl", u"Dutch"],
-    [u"dz", u"Dzongkha"],
-    [u"en", u"English"],
-    [u"eo", u"Esperanto"],
-    [u"et", u"Estonian"],
-    [u"ee", u"Ewe"],
-    [u"fo", u"Faroese"],
-    [u"fj", u"Fijian"],
-    [u"fi", u"Finnish"],
-    [u"fr", u"French"],
-    [u"fy", u"Western Frisian"],
-    [u"ff", u"Fulah"],
-    [u"ka", u"Georgian"],
-    [u"de", u"German"],
-    [u"gd", u"Gaelic"],
-    [u"ga", u"Irish"],
-    [u"gl", u"Galician"],
-    [u"gv", u"Manx"],
-    [u"el", u"Greek"],
-    [u"gn", u"Guarani"],
-    [u"gu", u"Gujarati"],
-    [u"ht", u"Haitian"],
-    [u"ha", u"Hausa"],
-    [u"he", u"Hebrew"],
-    [u"hz", u"Herero"],
-    [u"hi", u"Hindi"],
-    [u"ho", u"Hiri Motu"],
-    [u"hr", u"Croatian"],
-    [u"hu", u"Hungarian"],
-    [u"ig", u"Igbo"],
-    [u"is", u"Icelandic"],
-    [u"io", u"Ido"],
-    [u"ii", u"Sichuan Yi"],
-    [u"iu", u"Inuktitut"],
-    [u"ie", u"Interlingue"],
-    [u"ia", u"Interlingua"],
-    [u"id", u"Indonesian"],
-    [u"ik", u"Inupiaq"],
-    [u"it", u"Italian"],
-    [u"jv", u"Javanese"],
-    [u"ja", u"Japanese"],
-    [u"kl", u"Kalaallisut"],
-    [u"kn", u"Kannada"],
-    [u"ks", u"Kashmiri"],
-    [u"kr", u"Kanuri"],
-    [u"kk", u"Kazakh"],
-    [u"km", u"Central Khmer"],
-    [u"ki", u"Kikuyu"],
-    [u"rw", u"Kinyarwanda"],
-    [u"ky", u"Kirghiz"],
-    [u"kv", u"Komi"],
-    [u"kg", u"Kongo"],
-    [u"ko", u"Korean"],
-    [u"kj", u"Kuanyama"],
-    [u"ku", u"Kurdish"],
-    [u"lo", u"Lao"],
-    [u"la", u"Latin"],
-    [u"lv", u"Latvian"],
-    [u"li", u"Limburgan"],
-    [u"ln", u"Lingala"],
-    [u"lt", u"Lithuanian"],
-    [u"lb", u"Luxembourgish"],
-    [u"lu", u"Luba-Katanga"],
-    [u"lg", u"Ganda"],
-    [u"mk", u"Macedonian"],
-    [u"mh", u"Marshallese"],
-    [u"ml", u"Malayalam"],
-    [u"mi", u"Maori"],
-    [u"mr", u"Marathi"],
-    [u"ms", u"Malay"],
-    [u"mg", u"Malagasy"],
-    [u"mt", u"Maltese"],
-    [u"mn", u"Mongolian"],
-    [u"na", u"Nauru"],
-    [u"nv", u"Navajo"],
-    [u"nr", u"Ndebele, South"],
-    [u"nd", u"Ndebele, North"],
-    [u"ng", u"Ndonga"],
-    [u"ne", u"Nepali"],
-    [u"nn", u"Norwegian Nynorsk"],
-    [u"nb", u"Bokmål, Norwegian"],
-    [u"no", u"Norwegian"],
-    [u"ny", u"Chichewa"],
-    [u"oc", u"Occitan"],
-    [u"oj", u"Ojibwa"],
-    [u"or", u"Oriya"],
-    [u"om", u"Oromo"],
-    [u"os", u"Ossetian"],
-    [u"pa", u"Panjabi"],
-    [u"fa", u"Persian"],
-    [u"pi", u"Pali"],
-    [u"pl", u"Polish"],
-    [u"pt", u"Portuguese"],
-    [u"ps", u"Pushto"],
-    [u"qu", u"Quechua"],
-    [u"rm", u"Romansh"],
-    [u"ro", u"Romanian"],
-    [u"rn", u"Rundi"],
-    [u"ru", u"Russian"],
-    [u"sg", u"Sango"],
-    [u"sa", u"Sanskrit"],
-    [u"si", u"Sinhala"],
-    [u"sk", u"Slovak"],
-    [u"sl", u"Slovenian"],
-    [u"se", u"Northern Sami"],
-    [u"sm", u"Samoan"],
-    [u"sn", u"Shona"],
-    [u"sd", u"Sindhi"],
-    [u"so", u"Somali"],
-    [u"st", u"Sotho, Southern"],
-    [u"es", u"Spanish"],
-    [u"sc", u"Sardinian"],
-    [u"sr", u"Serbian"],
-    [u"ss", u"Swati"],
-    [u"su", u"Sundanese"],
-    [u"sw", u"Swahili"],
-    [u"sv", u"Swedish"],
-    [u"ty", u"Tahitian"],
-    [u"ta", u"Tamil"],
-    [u"tt", u"Tatar"],
-    [u"te", u"Telugu"],
-    [u"tg", u"Tajik"],
-    [u"tl", u"Tagalog"],
-    [u"th", u"Thai"],
-    [u"bo", u"Tibetan"],
-    [u"ti", u"Tigrinya"],
-    [u"to", u"Tonga (Tonga Islands)"],
-    [u"tn", u"Tswana"],
-    [u"ts", u"Tsonga"],
-    [u"tk", u"Turkmen"],
-    [u"tr", u"Turkish"],
-    [u"tw", u"Twi"],
-    [u"ug", u"Uighur"],
-    [u"uk", u"Ukrainian"],
-    [u"ur", u"Urdu"],
-    [u"uz", u"Uzbek"],
-    [u"ve", u"Venda"],
-    [u"vi", u"Vietnamese"],
-    [u"vo", u"Volapük"],
-    [u"cy", u"Welsh"],
-    [u"wa", u"Walloon"],
-    [u"wo", u"Wolof"],
-    [u"xh", u"Xhosa"],
-    [u"yi", u"Yiddish"],
-    [u"yo", u"Yoruba"],
-    [u"za", u"Zhuang"],
-    [u"zu", u"Zulu"]
+    ["aa", "Afar"],
+    ["ab", "Abkhazian"],
+    ["af", "Afrikaans"],
+    ["ak", "Akan"],
+    ["sq", "Albanian"],
+    ["am", "Amharic"],
+    ["ar", "Arabic"],
+    ["an", "Aragonese"],
+    ["hy", "Armenian"],
+    ["as", "Assamese"],
+    ["av", "Avaric"],
+    ["ae", "Avestan"],
+    ["ay", "Aymara"],
+    ["az", "Azerbaijani"],
+    ["ba", "Bashkir"],
+    ["bm", "Bambara"],
+    ["eu", "Basque"],
+    ["be", "Belarusian"],
+    ["bn", "Bengali"],
+    ["bh", "Bihari languages"],
+    ["bi", "Bislama"],
+    ["bs", "Bosnian"],
+    ["br", "Breton"],
+    ["bg", "Bulgarian"],
+    ["my", "Burmese"],
+    ["ca", "Catalan"],
+    ["ch", "Chamorro"],
+    ["ce", "Chechen"],
+    ["zh", "Chinese"],
+    ["zh_HANS", "Simplified Chinese"],
+    ["zh_HANT", "Traditional Chinese"],
+    ["cu", "Church Slavic"],
+    ["cv", "Chuvash"],
+    ["kw", "Cornish"],
+    ["co", "Corsican"],
+    ["cr", "Cree"],
+    ["cs", "Czech"],
+    ["da", "Danish"],
+    ["dv", "Divehi"],
+    ["nl", "Dutch"],
+    ["dz", "Dzongkha"],
+    ["en", "English"],
+    ["eo", "Esperanto"],
+    ["et", "Estonian"],
+    ["ee", "Ewe"],
+    ["fo", "Faroese"],
+    ["fj", "Fijian"],
+    ["fi", "Finnish"],
+    ["fr", "French"],
+    ["fy", "Western Frisian"],
+    ["ff", "Fulah"],
+    ["ka", "Georgian"],
+    ["de", "German"],
+    ["gd", "Gaelic"],
+    ["ga", "Irish"],
+    ["gl", "Galician"],
+    ["gv", "Manx"],
+    ["el", "Greek"],
+    ["gn", "Guarani"],
+    ["gu", "Gujarati"],
+    ["ht", "Haitian"],
+    ["ha", "Hausa"],
+    ["he", "Hebrew"],
+    ["hz", "Herero"],
+    ["hi", "Hindi"],
+    ["ho", "Hiri Motu"],
+    ["hr", "Croatian"],
+    ["hu", "Hungarian"],
+    ["ig", "Igbo"],
+    ["is", "Icelandic"],
+    ["io", "Ido"],
+    ["ii", "Sichuan Yi"],
+    ["iu", "Inuktitut"],
+    ["ie", "Interlingue"],
+    ["ia", "Interlingua"],
+    ["id", "Indonesian"],
+    ["ik", "Inupiaq"],
+    ["it", "Italian"],
+    ["jv", "Javanese"],
+    ["ja", "Japanese"],
+    ["kl", "Kalaallisut"],
+    ["kn", "Kannada"],
+    ["ks", "Kashmiri"],
+    ["kr", "Kanuri"],
+    ["kk", "Kazakh"],
+    ["km", "Central Khmer"],
+    ["ki", "Kikuyu"],
+    ["rw", "Kinyarwanda"],
+    ["ky", "Kirghiz"],
+    ["kv", "Komi"],
+    ["kg", "Kongo"],
+    ["ko", "Korean"],
+    ["kj", "Kuanyama"],
+    ["ku", "Kurdish"],
+    ["lo", "Lao"],
+    ["la", "Latin"],
+    ["lv", "Latvian"],
+    ["li", "Limburgan"],
+    ["ln", "Lingala"],
+    ["lt", "Lithuanian"],
+    ["lb", "Luxembourgish"],
+    ["lu", "Luba-Katanga"],
+    ["lg", "Ganda"],
+    ["mk", "Macedonian"],
+    ["mh", "Marshallese"],
+    ["ml", "Malayalam"],
+    ["mi", "Maori"],
+    ["mr", "Marathi"],
+    ["ms", "Malay"],
+    ["mg", "Malagasy"],
+    ["mt", "Maltese"],
+    ["mn", "Mongolian"],
+    ["na", "Nauru"],
+    ["nv", "Navajo"],
+    ["nr", "Ndebele, South"],
+    ["nd", "Ndebele, North"],
+    ["ng", "Ndonga"],
+    ["ne", "Nepali"],
+    ["nn", "Norwegian Nynorsk"],
+    ["nb", "Bokmål, Norwegian"],
+    ["no", "Norwegian"],
+    ["ny", "Chichewa"],
+    ["oc", "Occitan"],
+    ["oj", "Ojibwa"],
+    ["or", "Oriya"],
+    ["om", "Oromo"],
+    ["os", "Ossetian"],
+    ["pa", "Panjabi"],
+    ["fa", "Persian"],
+    ["pi", "Pali"],
+    ["pl", "Polish"],
+    ["pt", "Portuguese"],
+    ["ps", "Pushto"],
+    ["qu", "Quechua"],
+    ["rm", "Romansh"],
+    ["ro", "Romanian"],
+    ["rn", "Rundi"],
+    ["ru", "Russian"],
+    ["sg", "Sango"],
+    ["sa", "Sanskrit"],
+    ["si", "Sinhala"],
+    ["sk", "Slovak"],
+    ["sl", "Slovenian"],
+    ["se", "Northern Sami"],
+    ["sm", "Samoan"],
+    ["sn", "Shona"],
+    ["sd", "Sindhi"],
+    ["so", "Somali"],
+    ["st", "Sotho, Southern"],
+    ["es", "Spanish"],
+    ["sc", "Sardinian"],
+    ["sr", "Serbian"],
+    ["ss", "Swati"],
+    ["su", "Sundanese"],
+    ["sw", "Swahili"],
+    ["sv", "Swedish"],
+    ["ty", "Tahitian"],
+    ["ta", "Tamil"],
+    ["tt", "Tatar"],
+    ["te", "Telugu"],
+    ["tg", "Tajik"],
+    ["tl", "Tagalog"],
+    ["th", "Thai"],
+    ["bo", "Tibetan"],
+    ["ti", "Tigrinya"],
+    ["to", "Tonga (Tonga Islands)"],
+    ["tn", "Tswana"],
+    ["ts", "Tsonga"],
+    ["tk", "Turkmen"],
+    ["tr", "Turkish"],
+    ["tw", "Twi"],
+    ["ug", "Uighur"],
+    ["uk", "Ukrainian"],
+    ["ur", "Urdu"],
+    ["uz", "Uzbek"],
+    ["ve", "Venda"],
+    ["vi", "Vietnamese"],
+    ["vo", "Volapük"],
+    ["cy", "Welsh"],
+    ["wa", "Walloon"],
+    ["wo", "Wolof"],
+    ["xh", "Xhosa"],
+    ["yi", "Yiddish"],
+    ["yo", "Yoruba"],
+    ["za", "Zhuang"],
+    ["zu", "Zulu"]
 ]
 
 
@@ -3824,6 +3879,8 @@ ACCOUNT_VISIBILITY_CONFIGURATION = {
         'account_privacy',
         'profile_image',
         'username',
+        "email",
+        "id",
     ],
 }
 
@@ -3854,7 +3911,6 @@ ACCOUNT_VISIBILITY_CONFIGURATION["custom_shareable_fields"] = (
 # The list of account fields that are visible only to staff and users viewing their own profiles
 ACCOUNT_VISIBILITY_CONFIGURATION["admin_fields"] = (
     ACCOUNT_VISIBILITY_CONFIGURATION["custom_shareable_fields"] + [
-        "email",
         "extended_profile",
         "gender",
         "state",
@@ -3867,6 +3923,7 @@ ACCOUNT_VISIBILITY_CONFIGURATION["admin_fields"] = (
         "secondary_email_enabled",
         "year_of_birth",
         "phone_number",
+        "activation_key",
     ]
 )
 
@@ -3900,11 +3957,12 @@ SOCIAL_PLATFORMS = {
 ECOMMERCE_PUBLIC_URL_ROOT = 'http://localhost:8002'
 ECOMMERCE_API_URL = 'http://localhost:8002/api/v2'
 ECOMMERCE_API_TIMEOUT = 5
+ECOMMERCE_ORDERS_API_CACHE_TIMEOUT = 3600
 ECOMMERCE_SERVICE_WORKER_USERNAME = 'ecommerce_worker'
 ECOMMERCE_API_SIGNING_KEY = 'SET-ME-PLEASE'
 
 COURSE_CATALOG_URL_ROOT = 'http://localhost:8008'
-COURSE_CATALOG_API_URL = '{}/api/v1'.format(COURSE_CATALOG_URL_ROOT)
+COURSE_CATALOG_API_URL = f'{COURSE_CATALOG_URL_ROOT}/api/v1'
 
 CREDENTIALS_INTERNAL_SERVICE_URL = 'http://localhost:8005'
 CREDENTIALS_PUBLIC_SERVICE_URL = 'http://localhost:8005'
@@ -4072,9 +4130,10 @@ RSS_PROXY_CACHE_TIMEOUT = 3600  # The length of time we cache RSS retrieved from
 
 #### Custom Courses for EDX (CCX) configuration
 
-# This is an arbitrary hard limit.
-# The reason we introcuced this number is because we do not want the CCX
-# to compete with the MOOC.
+# .. setting_name: CCX_MAX_STUDENTS_ALLOWED
+# .. setting_default: 200
+# .. setting_description: Maximum number of students allowed in a CCX (Custom Courses for edX), This is an arbitrary
+#   hard limit, chosen so that a CCX does not compete with public MOOCs.
 CCX_MAX_STUDENTS_ALLOWED = 200
 
 # Financial assistance settings
@@ -4234,17 +4293,17 @@ ENTERPRISE_ALL_SERVICE_USERNAMES = [
 # which are not provided by the Enterprise service. These settings provide base values
 # for those features.
 
-ENTERPRISE_PLATFORM_WELCOME_TEMPLATE = _(u'Welcome to {platform_name}.')
+ENTERPRISE_PLATFORM_WELCOME_TEMPLATE = _('Welcome to {platform_name}.')
 ENTERPRISE_SPECIFIC_BRANDED_WELCOME_TEMPLATE = _(
-    u'You have left the {start_bold}{enterprise_name}{end_bold} website and are now on the {platform_name} site. '
-    u'{enterprise_name} has partnered with {platform_name} to offer you high-quality, always available learning '
-    u'programs to help you advance your knowledge and career. '
-    u'{line_break}Please note that {platform_name} has a different {privacy_policy_link_start}Privacy Policy'
-    u'{privacy_policy_link_end} from {enterprise_name}.'
+    'You have left the {start_bold}{enterprise_name}{end_bold} website and are now on the {platform_name} site. '
+    '{enterprise_name} has partnered with {platform_name} to offer you high-quality, always available learning '
+    'programs to help you advance your knowledge and career. '
+    '{line_break}Please note that {platform_name} has a different {privacy_policy_link_start}Privacy Policy'
+    '{privacy_policy_link_end} from {enterprise_name}.'
 )
 ENTERPRISE_PROXY_LOGIN_WELCOME_TEMPLATE = _(
-    u'{start_bold}{enterprise_name}{end_bold} has partnered with {start_bold}{platform_name}{end_bold} '
-    u'to offer you high-quality learning opportunities from the world\'s best institutions and universities.'
+    '{start_bold}{enterprise_name}{end_bold} has partnered with {start_bold}{platform_name}{end_bold} '
+    'to offer you high-quality learning opportunities from the world\'s best institutions and universities.'
 )
 ENTERPRISE_TAGLINE = ''
 ENTERPRISE_EXCLUDED_REGISTRATION_FIELDS = {
@@ -4370,6 +4429,9 @@ RATELIMIT_RATE = '120/m'
 LOGISTRATION_RATELIMIT_RATE = '100/5m'
 LOGISTRATION_PER_EMAIL_RATELIMIT_RATE = '30/5m'
 LOGISTRATION_API_RATELIMIT = '20/m'
+LOGIN_AND_REGISTER_FORM_RATELIMIT = '100/5m'
+RESET_PASSWORD_TOKEN_VALIDATE_API_RATELIMIT = '30/7d'
+RESET_PASSWORD_API_RATELIMIT = '30/7d'
 
 ##### PASSWORD RESET RATE LIMIT SETTINGS #####
 PASSWORD_RESET_IP_RATE = '1/m'
@@ -4498,8 +4560,7 @@ PROGRAM_CONSOLE_MICROFRONTEND_URL = None
 # .. setting_name: LEARNING_MICROFRONTEND_URL
 # .. setting_default: None
 # .. setting_description: Base URL of the micro-frontend-based courseware page.
-# .. setting_warning: Also set site's ENABLE_COURSEWARE_MICROFRONTEND or
-#     FEATURES['ENABLE_COURSEWARE_MICROFRONTEND'] and courseware.courseware_mfe waffle flag
+# .. setting_warning: Also set site's courseware.courseware_mfe waffle flag.
 LEARNING_MICROFRONTEND_URL = None
 
 ############### Settings for the ace_common plugin #################
@@ -4591,8 +4652,15 @@ BLOCKSTORE_API_URL = 'http://localhost:18250/api/v1/'
 # .. setting_description: The django cache key of the cache to use for storing anonymous user state for XBlocks.
 XBLOCK_RUNTIME_V2_EPHEMERAL_DATA_CACHE = 'default'
 
-# Blockstore data could contain S3 links, so this should be lower than Blockstore's AWS_QUERYSTRING_EXPIRE
-BLOCKSTORE_BUNDLE_CACHE_TIMEOUT = 169200
+# .. setting_name: BLOCKSTORE_BUNDLE_CACHE_TIMEOUT
+# .. setting_default: 3000
+# .. setting_description: Maximum time-to-live of cached Bundles fetched from
+#     Blockstore, in seconds. When the values returned from Blockstore have
+#     TTLs of their own (such as signed S3 URLs), the maximum TTL of this cache
+#     must be lower than the minimum TTL of those values.
+#     We use a default of 3000s (50mins) because temporary URLs are often
+#     configured to expire after one hour.
+BLOCKSTORE_BUNDLE_CACHE_TIMEOUT = 3000
 
 ######################### MICROSITE ###############################
 MICROSITE_ROOT_DIR = '/edx/app/edxapp/edx-microsite'
@@ -4624,16 +4692,6 @@ LOGO_TRADEMARK_URL = None
 FAVICON_URL = None
 DEFAULT_EMAIL_LOGO_URL = 'https://edx-cdn.org/v3/default/logo.png'
 
-# .. toggle_name: ERROR_ON_DEPRECATED_EDX_PLATFORM_IMPORTS
-# .. toggle_implementation: DjangoSetting
-# .. toggle_default: False
-# .. toggle_use_cases: rollout
-# .. toggle_creation_date: 2021-01-20
-# .. toggle_target_removal_date: 2021-01-27
-# .. toggle_tickets: https://github.com/edx/edx-platform/pull/25932
-# .. toggle_description: Whether to raise an exception where,
-#  normally, a DeprecatedEdxPlatformImportWarning would be raised.
-#  This will allow us to test dropping support for the deprecated
-#  import paths without yet removing all of the import_shims
-#  machinery.
-ERROR_ON_DEPRECATED_EDX_PLATFORM_IMPORTS = False
+################# Settings for olx validation. #################
+COURSE_OLX_VALIDATION_STAGE = 1
+COURSE_OLX_VALIDATION_IGNORE_LIST = None

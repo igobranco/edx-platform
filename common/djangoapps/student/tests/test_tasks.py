@@ -3,15 +3,14 @@ Tests for the Sending activation email celery tasks
 """
 
 
-import mock
+from unittest import mock
 from django.conf import settings
 from django.test import TestCase
-from six.moves import range
 
 from edx_ace.errors import ChannelError, RecoverableChannelDeliveryError
-from lms.djangoapps.courseware.tests.factories import UserFactory
 from common.djangoapps.student.models import Registration
 from common.djangoapps.student.tasks import send_activation_email
+from common.djangoapps.student.tests.factories import UserFactory
 from common.djangoapps.student.views.management import compose_activation_email
 
 
@@ -21,13 +20,13 @@ class SendActivationEmailTestCase(TestCase):
     """
     def setUp(self):
         """ Setup components used by each test."""
-        super(SendActivationEmailTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.student = UserFactory()
 
         registration = Registration()
         registration.register(self.student)
 
-        self.msg = compose_activation_email("http://www.example.com", self.student, registration)
+        self.msg = compose_activation_email(self.student, registration)
 
     def test_ComposeEmail(self):
         """
@@ -37,7 +36,7 @@ class SendActivationEmailTestCase(TestCase):
         assert 'platform_name' in self.msg.context
         assert 'contact_mailing_address' in self.msg.context
         # Verify the presence of the activation-email specific attributes
-        assert self.msg.recipient.username == self.student.username
+        assert self.msg.recipient.lms_user_id == self.student.id
         assert self.msg.recipient.email_address == self.student.email
         assert self.msg.context['routed_user'] == self.student.username
         assert self.msg.context['routed_user_email'] == self.student.email

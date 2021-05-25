@@ -5,19 +5,17 @@ This module contains signals related to enterprise.
 
 import logging
 
-import six
 from django.conf import settings
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from enterprise.models import EnterpriseCourseEnrollment, EnterpriseCustomer, EnterpriseCustomerUser
+from enterprise.models import EnterpriseCourseEnrollment, EnterpriseCustomer, EnterpriseCustomerUser  # lint-amnesty, pylint: disable=unused-import
 from integrated_channels.integrated_channel.tasks import (
     transmit_single_learner_data,
     transmit_single_subsection_learner_data
 )
 from slumber.exceptions import HttpClientError
 
-from lms.djangoapps.email_marketing.tasks import update_user
 from openedx.core.djangoapps.commerce.utils import ecommerce_api_client
 from openedx.core.djangoapps.signals.signals import COURSE_GRADE_NOW_PASSED, COURSE_ASSESSMENT_GRADE_CHANGED
 from openedx.features.enterprise_support.api import enterprise_enabled
@@ -28,23 +26,6 @@ from common.djangoapps.student.signals import UNENROLL_DONE
 log = logging.getLogger(__name__)
 
 
-@receiver(post_save, sender=EnterpriseCustomerUser)
-def update_email_marketing_user_with_enterprise_vars(sender, instance, **kwargs):  # pylint: disable=unused-argument, invalid-name
-    """
-    Update the SailThru user with enterprise-related vars.
-    """
-    user = User.objects.get(id=instance.user_id)
-
-    # perform update asynchronously
-    update_user.delay(
-        sailthru_vars={
-            'is_enterprise_learner': True,
-            'enterprise_name': instance.enterprise_customer.name,
-        },
-        email=user.email
-    )
-
-
 @receiver(post_save, sender=EnterpriseCourseEnrollment)
 def update_dsc_cache_on_course_enrollment(sender, instance, **kwargs):  # pylint: disable=unused-argument
     """
@@ -52,7 +33,8 @@ def update_dsc_cache_on_course_enrollment(sender, instance, **kwargs):  # pylint
     """
     clear_data_consent_share_cache(
         instance.enterprise_customer_user.user_id,
-        instance.course_id
+        instance.course_id,
+        str(instance.enterprise_customer_user.enterprise_customer.uuid)
     )
 
 
@@ -66,9 +48,9 @@ def update_dsc_cache_on_enterprise_customer_update(sender, instance, **kwargs):
         new_value = instance.enable_data_sharing_consent
         old_value = old_instance.enable_data_sharing_consent
         if new_value != old_value:
-            kwargs = {'enterprise_customer_uuid': six.text_type(instance.uuid)}
+            kwargs = {'enterprise_customer_uuid': str(instance.uuid)}
             result = clear_enterprise_customer_data_consent_share_cache.apply_async(kwargs=kwargs)
-            log.info(u"DSC: Created {task_name}[{task_id}] with arguments {kwargs}".format(
+            log.info("DSC: Created {task_name}[{task_id}] with arguments {kwargs}".format(
                 task_name=clear_enterprise_customer_data_consent_share_cache.name,
                 task_id=result.task_id,
                 kwargs=kwargs,
@@ -82,8 +64,8 @@ def handle_enterprise_learner_passing_grade(sender, user, course_id, **kwargs): 
     """
     if enterprise_enabled() and is_enterprise_learner(user):
         kwargs = {
-            'username': six.text_type(user.username),
-            'course_run_id': six.text_type(course_id)
+            'username': str(user.username),
+            'course_run_id': str(course_id)
         }
 
         transmit_single_learner_data.apply_async(kwargs=kwargs)
@@ -115,6 +97,8 @@ def refund_order_voucher(sender, course_enrollment, skip_refund=False, **kwargs)
         return
     if not course_enrollment.refundable():
         return
+    if not course_enrollment.is_order_voucher_refundable():
+        return
     if not EnterpriseCourseEnrollment.objects.filter(
         enterprise_customer_user__user_id=course_enrollment.user_id,
         course_id=str(course_enrollment.course.id)
@@ -125,7 +109,7 @@ def refund_order_voucher(sender, course_enrollment, skip_refund=False, **kwargs)
     client = ecommerce_api_client(service_user)
     order_number = course_enrollment.get_order_attribute_value('order_number')
     if order_number:
-        error_message = u"Encountered {} from ecommerce while creating refund voucher. Order={}, enrollment={}, user={}"
+        error_message = "Encountered {} from ecommerce while creating refund voucher. Order={}, enrollment={}, user={}"
         try:
             client.enterprise.coupons.create_refunded_voucher.post({"order": order_number})
         except HttpClientError as ex:

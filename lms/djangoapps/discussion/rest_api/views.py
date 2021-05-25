@@ -4,8 +4,6 @@ Discussion API views
 
 
 import logging
-
-from django.conf import settings  # lint-amnesty, pylint: disable=unused-import
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.core.exceptions import ValidationError
 from edx_rest_framework_extensions.auth.jwt.authentication import JwtAuthentication
@@ -17,11 +15,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet
-from six import text_type
 
-from lms.djangoapps.discussion.views import get_divided_discussions
-from lms.djangoapps.instructor.access import update_forum_role
-from lms.djangoapps.discussion.django_comment_client.utils import available_division_schemes
+from lms.djangoapps.discussion.django_comment_client.utils import available_division_schemes  # lint-amnesty, pylint: disable=unused-import
 from lms.djangoapps.discussion.rest_api.api import (
     create_comment,
     create_thread,
@@ -48,19 +43,16 @@ from lms.djangoapps.discussion.rest_api.serializers import (
     DiscussionRolesSerializer,
     DiscussionSettingsSerializer
 )
+from lms.djangoapps.discussion.views import get_divided_discussions  # lint-amnesty, pylint: disable=unused-import
+from lms.djangoapps.instructor.access import update_forum_role
 from openedx.core.djangoapps.django_comment_common import comment_client
 from openedx.core.djangoapps.django_comment_common.models import Role
-from openedx.core.djangoapps.django_comment_common.utils import (
-    get_course_discussion_settings,
-    set_course_discussion_settings
-)
+from openedx.core.djangoapps.django_comment_common.models import CourseDiscussionSettings
 from openedx.core.djangoapps.user_api.accounts.permissions import CanReplaceUsername, CanRetireUser
 from openedx.core.djangoapps.user_api.models import UserRetirementStatus
 from openedx.core.lib.api.authentication import BearerAuthenticationAllowInactiveUser
-
 from openedx.core.lib.api.parsers import MergePatchParser
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
-from common.djangoapps.util.json_request import JsonResponse
 from xmodule.modulestore.django import modulestore
 
 log = logging.getLogger(__name__)
@@ -594,7 +586,7 @@ class RetireUserView(APIView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             raise
         except Exception as exc:  # pylint: disable=broad-except
-            return Response(text_type(exc), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(str(exc), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -661,7 +653,7 @@ class ReplaceUsernamesView(APIView):
             cc_user.replace_username(new_username)
         except User.DoesNotExist:
             log.warning(
-                u"Unable to change username from %s to %s in forums because %s doesn't exist in LMS DB.",
+                "Unable to change username from %s to %s in forums because %s doesn't exist in LMS DB.",
                 current_username,
                 new_username,
                 new_username,
@@ -670,14 +662,14 @@ class ReplaceUsernamesView(APIView):
         except comment_client.CommentClientRequestError as exc:
             if exc.status_code == 404:
                 log.info(
-                    u"Unable to change username from %s to %s in forums because user doesn't exist in forums",
+                    "Unable to change username from %s to %s in forums because user doesn't exist in forums",
                     current_username,
                     new_username,
                 )
                 return True
             else:
                 log.exception(
-                    u"Unable to change username from %s to %s in forums because forums API call failed with: %s.",
+                    "Unable to change username from %s to %s in forums because forums API call failed with: %s.",
                     current_username,
                     new_username,
                     exc,
@@ -685,7 +677,7 @@ class ReplaceUsernamesView(APIView):
             return False
 
         log.info(
-            u"Successfully changed username from %s to %s in forums.",
+            "Successfully changed username from %s to %s in forums.",
             current_username,
             new_username,
         )
@@ -760,22 +752,6 @@ class CourseDiscussionSettingsAPIView(DeveloperErrorViewMixin, APIView):
     parser_classes = (JSONParser, MergePatchParser,)
     permission_classes = (permissions.IsAuthenticated, permissions.IsAdminUser)
 
-    def _get_representation(self, course, course_key, discussion_settings):
-        """
-        Return a serialized representation of the course discussion settings.
-        """
-        divided_course_wide_discussions, divided_inline_discussions = get_divided_discussions(
-            course, discussion_settings
-        )
-        return JsonResponse({
-            'id': discussion_settings.id,
-            'divided_inline_discussions': divided_inline_discussions,
-            'divided_course_wide_discussions': divided_course_wide_discussions,
-            'always_divide_inline_discussions': discussion_settings.always_divide_inline_discussions,
-            'division_scheme': discussion_settings.division_scheme,
-            'available_division_schemes': available_division_schemes(course_key)
-        })
-
     def _get_request_kwargs(self, course_id):
         return dict(course_id=course_id)
 
@@ -791,8 +767,17 @@ class CourseDiscussionSettingsAPIView(DeveloperErrorViewMixin, APIView):
 
         course_key = form.cleaned_data['course_key']
         course = form.cleaned_data['course']
-        discussion_settings = get_course_discussion_settings(course_key)
-        return self._get_representation(course, course_key, discussion_settings)
+        discussion_settings = CourseDiscussionSettings.get(course_key)
+        serializer = DiscussionSettingsSerializer(
+            discussion_settings,
+            context={
+                'course': course,
+                'settings': discussion_settings,
+            },
+            partial=True,
+        )
+        response = Response(serializer.data)
+        return response
 
     def patch(self, request, course_id):
         """
@@ -808,24 +793,20 @@ class CourseDiscussionSettingsAPIView(DeveloperErrorViewMixin, APIView):
 
         course = form.cleaned_data['course']
         course_key = form.cleaned_data['course_key']
-        discussion_settings = get_course_discussion_settings(course_key)
+        discussion_settings = CourseDiscussionSettings.get(course_key)
 
         serializer = DiscussionSettingsSerializer(
+            discussion_settings,
+            context={
+                'course': course,
+                'settings': discussion_settings,
+            },
             data=request.data,
             partial=True,
-            course=course,
-            discussion_settings=discussion_settings
         )
         if not serializer.is_valid():
             raise ValidationError(serializer.errors)
-
-        settings_to_change = serializer.validated_data['settings_to_change']
-
-        try:
-            discussion_settings = set_course_discussion_settings(course_key, **settings_to_change)
-        except ValueError as e:
-            raise ValidationError(text_type(e))  # lint-amnesty, pylint: disable=raise-missing-from
-
+        serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -911,7 +892,7 @@ class CourseDiscussionRolesAPIView(DeveloperErrorViewMixin, APIView):
         role = form.cleaned_data['role']
 
         data = {'course_id': course_id, 'users': role.users.all()}
-        context = {'course_discussion_settings': get_course_discussion_settings(course_id)}
+        context = {'course_discussion_settings': CourseDiscussionSettings.get(course_id)}
 
         serializer = DiscussionRolesListSerializer(data, context=context)
         return Response(serializer.data)
@@ -937,10 +918,10 @@ class CourseDiscussionRolesAPIView(DeveloperErrorViewMixin, APIView):
         try:
             update_forum_role(course_id, user, rolename, action)
         except Role.DoesNotExist:
-            raise ValidationError(u"Role '{}' does not exist".format(rolename))  # lint-amnesty, pylint: disable=raise-missing-from
+            raise ValidationError(f"Role '{rolename}' does not exist")  # lint-amnesty, pylint: disable=raise-missing-from
 
         role = form.cleaned_data['role']
         data = {'course_id': course_id, 'users': role.users.all()}
-        context = {'course_discussion_settings': get_course_discussion_settings(course_id)}
+        context = {'course_discussion_settings': CourseDiscussionSettings.get(course_id)}
         serializer = DiscussionRolesListSerializer(data, context=context)
         return Response(serializer.data)

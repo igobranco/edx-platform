@@ -7,17 +7,24 @@ import pytest
 import six
 
 from django.core import mail
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command, CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, RequestFactory
+from django.test import TestCase, RequestFactory, override_settings
+
+from edx_toggles.toggles.testutils import override_waffle_flag
 
 from testfixtures import LogCapture
 from common.djangoapps.student.tests.factories import UserFactory
-
 from common.djangoapps.student.models import AccountRecoveryConfiguration
 
+from openedx.core.djangolib.testing.utils import skip_unless_lms
+from openedx.core.djangoapps.user_authn.toggles import REDIRECT_TO_AUTHN_MICROFRONTEND
+
 LOGGER_NAME = 'common.djangoapps.student.management.commands.recover_account'
+FEATURES_WITH_AUTHN_MFE_ENABLED = settings.FEATURES.copy()
+FEATURES_WITH_AUTHN_MFE_ENABLED['ENABLE_AUTHN_MICROFRONTEND'] = True
 
 
 class RecoverAccountTests(TestCase):
@@ -28,7 +35,7 @@ class RecoverAccountTests(TestCase):
     request_factory = RequestFactory()
 
     def setUp(self):
-        super(RecoverAccountTests, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user = UserFactory.create(username='amy', email='amy@edx.com', password='password')
 
     def _write_test_csv(self, csv, lines):
@@ -48,7 +55,7 @@ class RecoverAccountTests(TestCase):
 
         with NamedTemporaryFile() as csv:
             csv = self._write_test_csv(csv, lines=['amy,amy@edx.com,amy@newemail.com\n'])
-            call_command("recover_account", "--csv_file_path={}".format(csv.name))
+            call_command("recover_account", f"--csv_file_path={csv.name}")
 
             assert len(mail.outbox) == 1
 
@@ -64,6 +71,24 @@ class RecoverAccountTests(TestCase):
 
         # try to login with previous password
         assert not self.client.login(username=self.user.username, password='password')
+
+    @override_settings(FEATURES=FEATURES_WITH_AUTHN_MFE_ENABLED)
+    @override_waffle_flag(REDIRECT_TO_AUTHN_MICROFRONTEND, active=True)
+    @skip_unless_lms
+    def test_authn_mfe_url_in_reset_link(self):
+        """
+        send password reset link to learner with authn mfe.
+        :return:
+        """
+
+        with NamedTemporaryFile() as csv:
+            csv = self._write_test_csv(csv, lines=['amy,amy@edx.com,amy@newemail.com\n'])
+            call_command("recover_account", f"--csv_file_path={csv.name}")
+
+            assert len(mail.outbox) == 1
+
+        authn_mfe_url = re.findall(settings.AUTHN_MICROFRONTEND_URL, mail.outbox[0].body)[0]
+        self.assertEqual(authn_mfe_url, settings.AUTHN_MICROFRONTEND_URL)
 
     def test_file_not_found_error(self):
         """
@@ -85,7 +110,7 @@ class RecoverAccountTests(TestCase):
                                'exception was User matching query does not exist.'
 
             with LogCapture(LOGGER_NAME) as log:
-                call_command("recover_account", "--csv_file_path={}".format(csv.name))
+                call_command("recover_account", f"--csv_file_path={csv.name}")
 
                 log.check_present(
                     (LOGGER_NAME, 'ERROR', expected_message)
@@ -101,7 +126,7 @@ class RecoverAccountTests(TestCase):
             expected_message = "Successfully updated ['amy@newemail.com'] accounts. Failed to update [] accounts"
 
             with LogCapture(LOGGER_NAME) as log:
-                call_command("recover_account", "--csv_file_path={}".format(csv.name))
+                call_command("recover_account", f"--csv_file_path={csv.name}")
 
                 log.check_present(
                     (LOGGER_NAME, 'INFO', expected_message)

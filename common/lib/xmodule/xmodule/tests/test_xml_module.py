@@ -3,19 +3,19 @@
 
 
 import unittest
+from unittest.mock import Mock
+import dateutil.parser
 
-from mock import Mock
 from opaque_keys.edx.locator import BlockUsageLocator, CourseLocator
-from six.moves import range
 from xblock.field_data import DictFieldData
 from xblock.fields import Any, Boolean, Dict, Float, Integer, List, Scope, String
 from xblock.runtime import DictKeyValueStore, KvsFieldData
 
-from xmodule.course_module import CourseDescriptor
+from xmodule.course_module import CourseBlock
 from xmodule.fields import Date, RelativeTime, Timedelta
 from xmodule.modulestore.inheritance import InheritanceKeyValueStore, InheritanceMixin, InheritingFieldData
 from xmodule.modulestore.split_mongo.split_mongo_kvs import SplitMongoKVS
-from xmodule.seq_module import SequenceDescriptor
+from xmodule.seq_module import SequenceBlock
 from xmodule.tests import get_test_descriptor_system
 from xmodule.tests.xml import XModuleXmlImportTest
 from xmodule.tests.xml.factories import CourseFactory, ProblemFactory, SequenceFactory
@@ -28,7 +28,7 @@ class CrazyJsonString(String):
         return value + " JSON"
 
 
-class TestFields(object):
+class TestFields:
     # Will be returned by editable_metadata_fields.
     max_attempts = Integer(scope=Scope.settings, default=1000, values={'min': 1, 'max': 10})
     # Will not be returned by editable_metadata_fields because filtered out by non_editable_metadata_fields.
@@ -73,7 +73,7 @@ class InheritingFieldDataTest(unittest.TestCase):
         not_inherited = String(scope=Scope.settings, default="nothing")
 
     def setUp(self):
-        super(InheritingFieldDataTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.dummy_course_key = CourseLocator('test_org', 'test_123', 'test_run')
         self.system = get_test_descriptor_system()
         self.all_blocks = {}
@@ -109,7 +109,7 @@ class InheritingFieldDataTest(unittest.TestCase):
         """
         scope_ids = Mock()
         if usage_id is None:
-            block_id = "_auto{id}".format(id=len(self.all_blocks))
+            block_id = f"_auto{len(self.all_blocks)}"
             usage_id = self.get_usage_id("course", block_id)
         scope_ids.usage_id = usage_id
         block = self.system.construct_xblock_from_class(
@@ -164,7 +164,7 @@ class InheritingFieldDataTest(unittest.TestCase):
         parent.inherited = "Changed!"
         assert parent.inherited == 'Changed!'
         for child_num in range(10):
-            usage_id = self.get_usage_id("vertical", "child_{}".format(child_num))
+            usage_id = self.get_usage_id("vertical", f"child_{child_num}")
             child = self.get_a_block(usage_id=usage_id)
             child.parent = parent.location
             assert child.inherited == 'Changed!'
@@ -343,7 +343,7 @@ class EditableMetadataFieldsTest(unittest.TestCase):
         class TestModuleDescriptor(TestFields, XmlDescriptor):  # lint-amnesty, pylint: disable=abstract-method
             @property
             def non_editable_metadata_fields(self):
-                non_editable_fields = super(TestModuleDescriptor, self).non_editable_metadata_fields  # lint-amnesty, pylint: disable=super-with-arguments
+                non_editable_fields = super().non_editable_metadata_fields
                 non_editable_fields.append(TestModuleDescriptor.due)
                 return non_editable_fields
 
@@ -387,6 +387,7 @@ class TestSerialize(unittest.TestCase):
         assert serialize_field(['foo', 'bar']) == '["foo", "bar"]'
         assert serialize_field("2012-12-31T23:59:59Z") == '2012-12-31T23:59:59Z'
         assert serialize_field("1 day 12 hours 59 minutes 59 seconds") == '1 day 12 hours 59 minutes 59 seconds'
+        assert serialize_field(dateutil.parser.parse('2012-12-31T23:59:59Z')) == '2012-12-31T23:59:59+00:00'
 
 
 class TestDeserialize(unittest.TestCase):
@@ -588,20 +589,20 @@ class TestDeserializeRelativeTime(TestDeserialize):
 class TestXmlAttributes(XModuleXmlImportTest):
 
     def test_unknown_attribute(self):
-        assert not hasattr(CourseDescriptor, 'unknown_attr')
+        assert not hasattr(CourseBlock, 'unknown_attr')
         course = self.process_xml(CourseFactory.build(unknown_attr='value'))
         assert not hasattr(course, 'unknown_attr')
         assert course.xml_attributes['unknown_attr'] == 'value'
 
     def test_known_attribute(self):
-        assert hasattr(CourseDescriptor, 'show_calculator')
+        assert hasattr(CourseBlock, 'show_calculator')
         course = self.process_xml(CourseFactory.build(show_calculator='true'))
         assert course.show_calculator
         assert 'show_calculator' not in course.xml_attributes
 
     def test_rerandomize_in_policy(self):
         # Rerandomize isn't a basic attribute of Sequence
-        assert not hasattr(SequenceDescriptor, 'rerandomize')
+        assert not hasattr(SequenceBlock, 'rerandomize')
 
         root = SequenceFactory.build(policy={'rerandomize': 'never'})
         ProblemFactory.build(parent=root)
@@ -617,7 +618,7 @@ class TestXmlAttributes(XModuleXmlImportTest):
 
     def test_attempts_in_policy(self):
         # attempts isn't a basic attribute of Sequence
-        assert not hasattr(SequenceDescriptor, 'attempts')
+        assert not hasattr(SequenceBlock, 'attempts')
 
         root = SequenceFactory.build(policy={'attempts': '1'})
         ProblemFactory.build(parent=root)
@@ -635,7 +636,7 @@ class TestXmlAttributes(XModuleXmlImportTest):
 
     def check_inheritable_attribute(self, attribute, value):
         # `attribute` isn't a basic attribute of Sequence
-        assert not hasattr(SequenceDescriptor, attribute)
+        assert not hasattr(SequenceBlock, attribute)
 
         # `attribute` is added by InheritanceMixin
         assert hasattr(InheritanceMixin, attribute)
@@ -648,8 +649,8 @@ class TestXmlAttributes(XModuleXmlImportTest):
 
         seq = self.process_xml(root)
 
-        assert seq.unmixed_class == SequenceDescriptor
-        assert type(seq) != SequenceDescriptor  # lint-amnesty, pylint: disable=unidiomatic-typecheck
+        assert seq.unmixed_class == SequenceBlock
+        assert not seq.__class__ == SequenceBlock
 
         # `attribute` is added to the constructed sequence, because
         # it's in the InheritanceMixin

@@ -1,7 +1,7 @@
 """
 Test status utilities
 """
-import mock
+from unittest import mock
 
 from django.conf import settings
 from pytest import mark
@@ -52,27 +52,27 @@ class TestShowDemographics(SharedModuleStoreTestCase):  # lint-amnesty, pylint: 
     def test_user_enterprise(self, mock_get_programs_by_type):
         mock_get_programs_by_type.return_value = [self.program]
         EnterpriseCustomerUserFactory.create(user_id=self.user.id)
-        self.assertFalse(show_user_demographics(user=self.user))
+        assert not show_user_demographics(user=self.user)
 
 
 @skip_unless_lms
 @mark.django_db
 class TestShowCallToAction(TestCase):  # lint-amnesty, pylint: disable=missing-class-docstring
     def setUp(self):
-        super(TestShowCallToAction, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user = UserFactory()
 
     def test_new_user(self):
-        self.assertTrue(show_call_to_action_for_user(self.user))
+        assert show_call_to_action_for_user(self.user)
 
     def test_existing_user_no_dismiss(self):
         user_demographics = UserDemographicsFactory.create(user=self.user)
-        self.assertTrue(user_demographics.show_call_to_action)
-        self.assertTrue(show_call_to_action_for_user(self.user))
+        assert user_demographics.show_call_to_action
+        assert show_call_to_action_for_user(self.user)
 
     def test_existing_user_dismissed(self):
         user_demographics = UserDemographicsFactory.create(user=self.user)
         user_demographics.show_call_to_action = False
         user_demographics.save()
-        self.assertFalse(user_demographics.show_call_to_action)
-        self.assertFalse(show_call_to_action_for_user(self.user))
+        assert not user_demographics.show_call_to_action
+        assert not show_call_to_action_for_user(self.user)

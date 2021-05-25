@@ -1,4 +1,4 @@
-#   Copyright (c) 2008 Mikeal Rogers  # lint-amnesty, pylint: disable=django-not-configured, missing-module-docstring
+#   Copyright (c) 2008 Mikeal Rogers  # lint-amnesty, pylint: disable=missing-module-docstring
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ LOOKUP = {}
 from .paths import add_lookup, clear_lookups, lookup_template, save_lookups  # lint-amnesty, pylint: disable=wrong-import-position
 
 
-class Engines(object):
+class Engines:
     """
     Aliases for the available template engines.
     Note that the preview engine is only configured for cms.

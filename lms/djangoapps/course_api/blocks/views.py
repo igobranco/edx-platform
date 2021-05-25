@@ -3,7 +3,6 @@ CourseBlocks API views
 """
 
 
-import six
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import Http404
@@ -13,7 +12,6 @@ from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
-from six import text_type
 
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
 from xmodule.modulestore.django import modulestore
@@ -180,9 +178,15 @@ class BlocksView(DeveloperErrorViewMixin, ListAPIView):
             parameter.
 
           * lms_web_url: (string) The URL to the navigational container of the
-            xBlock on the web LMS.  This URL can be used as a further fallback
+            xBlock on the web. This URL can be used as a further fallback
             if the student_view_url and the student_view_data fields are not
-            supported.
+            supported. Will direct to either the "New" (micro-frontend) or
+            "Legacy" (Django-template-rendered) frontend experience depending
+            on which experience is active.
+
+          * legacy_web_url: (string) Like `lms_web_url`, but always directs to
+            the "Legacy" frontend experience. Should only be used for
+            transitional purposes; will be removed as part of DEPR-109.
 
           * lti_url: The block URL for an LTI consumer. Returned only if the
             "ENABLE_LTI_PROVIDER" Django settign is set to "True".
@@ -238,7 +242,7 @@ class BlocksView(DeveloperErrorViewMixin, ListAPIView):
                 patch_response_headers(response)
             return response
         except ItemNotFoundError as exception:
-            raise Http404(u"Block not found: {}".format(text_type(exception)))  # lint-amnesty, pylint: disable=raise-missing-from
+            raise Http404(f"Block not found: {str(exception)}")  # lint-amnesty, pylint: disable=raise-missing-from
 
 
 @view_auth_classes(is_authenticated=False)
@@ -301,11 +305,13 @@ class BlocksInCourseView(BlocksView):
             course_key = CourseKey.from_string(course_key_string)
             course_usage_key = modulestore().make_course_usage_key(course_key)
         except InvalidKeyError:
-            raise ValidationError(u"'{}' is not a valid course key.".format(six.text_type(course_key_string)))  # lint-amnesty, pylint: disable=raise-missing-from
+            raise ValidationError(f"'{str(course_key_string)}' is not a valid course key.")  # lint-amnesty, pylint: disable=raise-missing-from
         response = super().list(request, course_usage_key,
-                                hide_access_denials=hide_access_denials)  # lint-amnesty, pylint: disable=super-with-arguments
+                                hide_access_denials=hide_access_denials)
 
-        if 'completion' not in request.query_params.getlist('requested_fields', ''):
+        calculate_completion = any('completion' in param
+                                   for param in request.query_params.getlist('requested_fields', []))
+        if not calculate_completion:
             return response
 
         course_blocks = {}
@@ -321,7 +327,7 @@ class BlocksInCourseView(BlocksView):
             course_blocks = response.data['blocks']
 
         if not root:
-            raise ValueError("Unable to find course block in {}".format(course_key_string))
+            raise ValueError(f"Unable to find course block in {course_key_string}")
 
         recurse_mark_complete(root, course_blocks)
         return response
@@ -344,7 +350,7 @@ def recurse_mark_complete(block_id, blocks):
     if block.get('completion') == 1:
         return
 
-    child_blocks = block.get('children', block.get('descendents'))
+    child_blocks = block.get('children', block.get('descendants'))
     # Unit blocks(blocks with no children) completion is being marked by patch call to completion service.
     if child_blocks:
         for child_block in child_blocks:

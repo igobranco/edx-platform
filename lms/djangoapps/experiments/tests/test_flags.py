@@ -2,23 +2,24 @@
 Tests for experimentation feature flags
 """
 
+from unittest.mock import patch
+
 import ddt
 import pytz
 from crum import set_current_request
 from dateutil import parser
 from django.test.client import RequestFactory
 from edx_django_utils.cache import RequestCache
-from mock import patch
+from edx_toggles.toggles.testutils import override_waffle_flag
 from opaque_keys.edx.keys import CourseKey
 
-from edx_toggles.toggles.testutils import override_waffle_flag
-from lms.djangoapps.experiments.testutils import override_experiment_waffle_flag
+from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
 from lms.djangoapps.experiments.factories import ExperimentKeyValueFactory
 from lms.djangoapps.experiments.flags import ExperimentWaffleFlag
+from lms.djangoapps.experiments.testutils import override_experiment_waffle_flag
 from openedx.core.djangoapps.site_configuration.tests.factories import SiteFactory
 from openedx.core.djangoapps.waffle_utils import CourseWaffleFlag
 from openedx.core.djangoapps.waffle_utils.models import WaffleFlagCourseOverrideModel
-from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
 
 
@@ -37,7 +38,7 @@ class ExperimentWaffleFlagTests(SharedModuleStoreTestCase):
         self.addCleanup(set_current_request, None)
         set_current_request(self.request)
 
-        self.flag = ExperimentWaffleFlag('experiments', 'test', __name__, num_buckets=2, experiment_id=0)
+        self.flag = ExperimentWaffleFlag('experiments', 'test', __name__, num_buckets=2, experiment_id=0)  # lint-amnesty, pylint: disable=toggle-missing-annotation
         self.key = CourseKey.from_string('a/b/c')
 
         bucket_patch = patch('lms.djangoapps.experiments.flags.stable_bucketing_hash_group', return_value=1)
@@ -104,7 +105,7 @@ class ExperimentWaffleFlagTests(SharedModuleStoreTestCase):
     )
     @ddt.unpack
     def test_forcing_bucket(self, active, expected_bucket):
-        bucket_flag = CourseWaffleFlag('experiments', 'test.0', __name__)
+        bucket_flag = CourseWaffleFlag('experiments', 'test.0', __name__)  # lint-amnesty, pylint: disable=toggle-missing-annotation
         with override_waffle_flag(bucket_flag, active=active):
             assert self.get_bucket() == expected_bucket
 
@@ -162,7 +163,7 @@ class ExperimentWaffleFlagTests(SharedModuleStoreTestCase):
         assert 'experiments' == self.flag._app_label
         assert 'test' == self.flag._experiment_name
 
-        flag = ExperimentWaffleFlag("namespace", "flag.name", __name__)
+        flag = ExperimentWaffleFlag("namespace", "flag.name", __name__)  # lint-amnesty, pylint: disable=toggle-missing-annotation
         assert 'namespace' == flag._app_label
         assert 'flag.name' == flag._experiment_name
 
@@ -172,15 +173,15 @@ class ExperimentWaffleFlagCourseAwarenessTest(SharedModuleStoreTestCase):
     Tests for how course context awareness/unawareness interacts with the
     ExperimentWaffleFlag class.
     """
-    course_aware_flag = ExperimentWaffleFlag(
+    course_aware_flag = ExperimentWaffleFlag(  # lint-amnesty, pylint: disable=toggle-missing-annotation
         'exp', 'aware', __name__, num_buckets=20, use_course_aware_bucketing=True,
     )
-    course_aware_subflag = CourseWaffleFlag('exp', 'aware.1', __name__)
+    course_aware_subflag = CourseWaffleFlag('exp', 'aware.1', __name__)  # lint-amnesty, pylint: disable=toggle-missing-annotation
 
-    course_unaware_flag = ExperimentWaffleFlag(
+    course_unaware_flag = ExperimentWaffleFlag(  # lint-amnesty, pylint: disable=toggle-missing-annotation
         'exp', 'unaware', __name__, num_buckets=20, use_course_aware_bucketing=False,
     )
-    course_unaware_subflag = CourseWaffleFlag('exp', 'unaware.1', __name__)
+    course_unaware_subflag = CourseWaffleFlag('exp', 'unaware.1', __name__)  # lint-amnesty, pylint: disable=toggle-missing-annotation
 
     course_key_1 = CourseKey.from_string("x/y/1")
     course_key_2 = CourseKey.from_string("x/y/22")

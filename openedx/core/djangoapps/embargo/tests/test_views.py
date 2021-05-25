@@ -1,13 +1,14 @@
 """Tests for embargo app views. """
 
 
+from unittest.mock import patch, MagicMock
+
 import ddt
 import maxminddb
 import geoip2.database
 
 from django.urls import reverse
 from django.conf import settings
-from mock import patch, MagicMock
 
 from .factories import CountryAccessRuleFactory, RestrictedCourseFactory
 from .. import messages
@@ -46,7 +47,7 @@ class CourseAccessMessageViewTest(CacheIsolationTestCase, UrlResetMixin):
 
     @patch.dict(settings.FEATURES, {'EMBARGO': True})
     def setUp(self):
-        super(CourseAccessMessageViewTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
     @ddt.data(*list(messages.ENROLL_MESSAGES.keys()))
     def test_enrollment_messages(self, msg_key):
@@ -83,17 +84,9 @@ class CourseAccessMessageViewTest(CacheIsolationTestCase, UrlResetMixin):
             'message_key': message_key
         })
         response = self.client.get(url)
-        self.assertEqual(
-            response.status_code, expected_status,
-            msg=(
-                u"Unexpected status code when loading '{url}': "
-                u"expected {expected} but got {actual}"
-            ).format(
-                url=url,
-                expected=expected_status,
-                actual=response.status_code
-            )
-        )
+        assert response.status_code ==\
+               expected_status, f"Unexpected status code when loading '{url}': expected {expected_status}" \
+                                f" but got {response.status_code}"
 
 
 @skip_unless_lms
@@ -102,7 +95,7 @@ class CheckCourseAccessViewTest(CourseApiFactoryMixin, ModuleStoreTestCase):
 
     @patch.dict(settings.FEATURES, {'EMBARGO': True})
     def setUp(self):
-        super(CheckCourseAccessViewTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.url = reverse('api_embargo:v1_course_access')
         user = UserFactory(is_staff=True)
         self.client.login(username=user.username, password=UserFactory._DEFAULT_PASSWORD)  # lint-amnesty, pylint: disable=protected-access
@@ -116,8 +109,8 @@ class CheckCourseAccessViewTest(CourseApiFactoryMixin, ModuleStoreTestCase):
     def test_course_access_endpoint_with_unrestricted_course(self):
         response = self.client.get(self.url, data=self.request_data)
         expected_response = {'access': True}
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, expected_response)
+        assert response.status_code == 200
+        assert response.data == expected_response
 
     def test_course_access_endpoint_with_restricted_course(self):
         CountryAccessRuleFactory(restricted_course=RestrictedCourseFactory(course_key=self.course_id))
@@ -149,26 +142,26 @@ class CheckCourseAccessViewTest(CourseApiFactoryMixin, ModuleStoreTestCase):
         response = self.client.get(self.url, data=self.request_data)
 
         expected_response = {'access': False}
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, expected_response)
+        assert response.status_code == 200
+        assert response.data == expected_response
 
     def test_course_access_endpoint_with_logged_out_user(self):
         self.client.logout()
         response = self.client.get(self.url, data=self.request_data)
-        self.assertEqual(response.status_code, 403)
+        assert response.status_code == 403
 
     def test_course_access_endpoint_with_non_staff_user(self):
         user = UserFactory(is_staff=False)
         self.client.login(username=user.username, password=UserFactory._DEFAULT_PASSWORD)  # lint-amnesty, pylint: disable=protected-access
 
         response = self.client.get(self.url, data=self.request_data)
-        self.assertEqual(response.status_code, 403)
+        assert response.status_code == 403
 
     def test_course_access_endpoint_with_invalid_data(self):
         response = self.client.get(self.url, data=None)
-        self.assertEqual(response.status_code, 400)
+        assert response.status_code == 400
 
     def test_invalid_course_id(self):
         self.request_data['course_ids'] = ['foo']
         response = self.client.get(self.url, data=self.request_data)
-        self.assertEqual(response.status_code, 400)
+        assert response.status_code == 400

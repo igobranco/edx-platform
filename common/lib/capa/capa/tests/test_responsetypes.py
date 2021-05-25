@@ -798,7 +798,7 @@ class StringResponseTest(ResponseTest):  # pylint: disable=missing-class-docstri
         problem = self.build_problem(answer="a2", case_sensitive=False, regexp=True, additional_answers=['?\\d?'])
         with pytest.raises(Exception) as cm:
             self.assert_grade(problem, "a3", "correct")
-        exception_message = text_type(cm.exception)
+        exception_message = text_type(cm.value)
         assert 'nothing to repeat' in exception_message
 
     def test_hints(self):
@@ -1284,7 +1284,7 @@ class ChoiceResponseTest(ResponseTest):  # pylint: disable=missing-class-docstri
             ok0 = c % 2 == 0 # check remainder modulo 2
             ok1 = c % 3 == 0 # check remainder modulo 3
             ok2 = c % 5 == 0 # check remainder modulo 5
-            ok3 = not any([ok0, ok1, ok2])
+            ok3 = not any((ok0, ok1, ok2))
         """)
         choices = ["$ok0", "$ok1", "$ok2", "$ok3"]
         problem = self.build_problem(script=script,
@@ -2304,7 +2304,7 @@ class CustomResponseTest(ResponseTest):  # pylint: disable=missing-class-docstri
 
         # Make a zipfile with one module in it with one function.
         zipstring = io.BytesIO()
-        zipf = zipfile.ZipFile(zipstring, "w")
+        zipf = zipfile.ZipFile(zipstring, "w")  # lint-amnesty, pylint: disable=consider-using-with
         zipf.writestr("my_helper.py", textwrap.dedent("""\
             def seventeen():
                 return 17

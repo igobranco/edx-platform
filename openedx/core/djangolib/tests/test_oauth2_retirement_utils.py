@@ -1,4 +1,4 @@
-"""  # lint-amnesty, pylint: disable=django-not-configured
+"""
 Contains tests for OAuth2 model-retirement methods.
 """
 
@@ -47,4 +47,4 @@ class RetireDOTModelsTest(TestCase):  # lint-amnesty, pylint: disable=missing-cl
         query_sets = [applications, access_tokens, refresh_tokens, grants]
 
         for query_set in query_sets:
-            self.assertFalse(query_set.exists())
+            assert not query_set.exists()

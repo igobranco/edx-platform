@@ -1,4 +1,3 @@
-import unittest
 import copy
 import pytz
 from uuid import uuid4
@@ -12,8 +11,6 @@ from rest_framework.test import APITestCase
 
 from enterprise.models import EnterpriseCustomer, EnterpriseCustomerIdentityProvider
 from enterprise.constants import ENTERPRISE_ADMIN_ROLE, ENTERPRISE_LEARNER_ROLE
-
-from common.djangoapps.third_party_auth.tests import testutil
 from common.djangoapps.third_party_auth.models import SAMLProviderData, SAMLProviderConfig
 from common.djangoapps.third_party_auth.tests.samlutils import set_jwt_cookie
 from common.djangoapps.third_party_auth.tests.utils import skip_unless_thirdpartyauth
@@ -51,7 +48,7 @@ class SAMLProviderDataTests(APITestCase):
     """
     @classmethod
     def setUpTestData(cls):
-        super(SAMLProviderDataTests, cls).setUpTestData()
+        super().setUpTestData()
         cls.user = User.objects.create_user(username='testuser', password='testpwd')
         cls.site, _ = Site.objects.get_or_create(domain='example.com')
         cls.enterprise_customer = EnterpriseCustomer.objects.create(
@@ -84,7 +81,7 @@ class SAMLProviderDataTests(APITestCase):
         # GET auth/saml/v0/providerdata/?enterprise_customer_uuid=id
         url_base = reverse('saml_provider_data-list')
         query_kwargs = {'enterprise_customer_uuid': ENTERPRISE_ID}
-        url = '{}?{}'.format(url_base, urlencode(query_kwargs))
+        url = f'{url_base}?{urlencode(query_kwargs)}'
 
         response = self.client.get(url, format='json')
 
@@ -143,7 +140,7 @@ class SAMLProviderDataTests(APITestCase):
         # DELETE auth/saml/v0/providerdata/ -d data
         url_base = reverse('saml_provider_data-detail', kwargs={'pk': self.saml_provider_data.id})
         query_kwargs = {'enterprise_customer_uuid': ENTERPRISE_ID}
-        url = '{}?{}'.format(url_base, urlencode(query_kwargs))
+        url = f'{url_base}?{urlencode(query_kwargs)}'
         orig_count = SAMLProviderData.objects.count()
 
         response = self.client.delete(url)
@@ -160,7 +157,7 @@ class SAMLProviderDataTests(APITestCase):
         self.client.force_authenticate(user=self.user)
         url_base = reverse('saml_provider_data-list')
         query_kwargs = {'enterprise_customer_uuid': BAD_ENTERPRISE_ID}
-        url = '{}?{}'.format(url_base, urlencode(query_kwargs))
+        url = f'{url_base}?{urlencode(query_kwargs)}'
 
         response = self.client.get(url, format='json')
 
@@ -170,7 +167,7 @@ class SAMLProviderDataTests(APITestCase):
         self.client.logout()
         urlbase = reverse('saml_provider_data-list')
         query_kwargs = {'enterprise_customer_uuid': ENTERPRISE_ID}
-        url = '{}?{}'.format(urlbase, urlencode(query_kwargs))
+        url = f'{urlbase}?{urlencode(query_kwargs)}'
         set_jwt_cookie(self.client, self.user, [(ENTERPRISE_LEARNER_ROLE, ENTERPRISE_ID)])
         response = self.client.get(url, format='json')
         assert response.status_code == status.HTTP_403_FORBIDDEN

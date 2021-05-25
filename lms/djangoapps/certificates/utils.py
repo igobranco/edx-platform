@@ -4,22 +4,18 @@ Certificates utilities
 
 import logging
 
-import six
 from django.conf import settings
 from django.urls import reverse
 from eventtracking import tracker
 from opaque_keys.edx.keys import CourseKey
-from xmodule.modulestore.django import modulestore
 
-from lms.djangoapps.certificates.models import (
-    GeneratedCertificate
-)
-from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
+from lms.djangoapps.certificates.models import GeneratedCertificate
+from openedx.core.djangoapps.content.course_overviews.api import get_course_overview
 
 log = logging.getLogger(__name__)
 
 
-def emit_certificate_event(event_name, user, course_id, course=None, event_data=None):
+def emit_certificate_event(event_name, user, course_id, course_overview=None, event_data=None):
     """
     Emits certificate event.
 
@@ -27,16 +23,18 @@ def emit_certificate_event(event_name, user, course_id, course=None, event_data=
     https://github.com/edx/edx-documentation/blob/master/en_us/data/source/internal_data_formats/tracking_logs/student_event_types.rst # pylint: disable=line-too-long
     """
     event_name = '.'.join(['edx', 'certificate', event_name])
-    if course is None:
-        course = modulestore().get_course(course_id, depth=0)
+
+    if not course_overview:
+        course_overview = get_course_overview(course_id)
+
     context = {
-        'org_id': course.org,
-        'course_id': six.text_type(course_id)
+        'org_id': course_overview.org,
+        'course_id': str(course_id)
     }
 
     data = {
         'user_id': user.id,
-        'course_id': six.text_type(course_id),
+        'course_id': str(course_id),
         'certificate_url': get_certificate_url(user.id, course_id, uuid=event_data['certificate_id'])
     }
     event_data = event_data or {}
@@ -52,24 +50,24 @@ def get_certificate_url(user_id=None, course_id=None, uuid=None, user_certificat
     """
     url = ''
 
-    course = _course_from_key(course_id)
-    if not course:
+    course_overview = _course_from_key(course_id)
+    if not course_overview:
         return url
 
-    if has_html_certificates_enabled(course):
+    if has_html_certificates_enabled(course_overview):
         url = _certificate_html_url(uuid)
     else:
         url = _certificate_download_url(user_id, course_id, user_certificate=user_certificate)
     return url
 
 
-def has_html_certificates_enabled(course):
+def has_html_certificates_enabled(course_overview):
     """
-    Returns True if HTML certificates are enabled
+    Returns True if HTML certificates are enabled in a course run.
     """
     if not settings.FEATURES.get('CERTIFICATES_HTML_VIEW', False):
         return False
-    return course.cert_html_view_enabled
+    return course_overview.cert_html_view_enabled
 
 
 def _certificate_html_url(uuid):
@@ -93,9 +91,9 @@ def _certificate_download_url(user_id, course_id, user_certificate=None):
             )
         except GeneratedCertificate.DoesNotExist:
             log.critical(
-                u'Unable to lookup certificate\n'
-                u'user id: %s\n'
-                u'course: %s', six.text_type(user_id), six.text_type(course_id)
+                'Unable to lookup certificate\n'
+                'user id: %s\n'
+                'course: %s', str(user_id), str(course_id)
             )
 
     if user_certificate:
@@ -108,7 +106,7 @@ def _course_from_key(course_key):
     """
     Returns the course overview
     """
-    return CourseOverview.get_from_id(_safe_course_key(course_key))
+    return get_course_overview(_safe_course_key(course_key))
 
 
 def _safe_course_key(course_key):

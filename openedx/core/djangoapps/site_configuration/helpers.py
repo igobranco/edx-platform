@@ -1,4 +1,4 @@
-"""  # lint-amnesty, pylint: disable=django-not-configured
+"""
 Helpers methods for site configuration.
 """
 
@@ -27,6 +27,25 @@ def get_current_site_configuration():
         return getattr(site, "configuration", None)
     except SiteConfiguration.DoesNotExist:
         return None
+
+
+def get_current_site_configuration_values(default=None):
+    """
+    Returns `SiteConfiguration.site_values` for current site.
+    Args:
+        default (dict): default value (`{}` if not specified) to return if site configuration is not available.
+    Returns:
+        (dict) Site Configuration value for the current site or default
+    """
+    if default is None:
+        default = {}
+
+    site_configuration = get_current_site_configuration()
+
+    if site_configuration:
+        return site_configuration.site_values
+    else:
+        return default
 
 
 def is_site_configuration_enabled():
@@ -230,6 +249,6 @@ def page_title_breadcrumbs(*crumbs, **kwargs):
     separator = kwargs.get("separator", " | ")
     crumbs = [c for c in crumbs if c is not None]
     if crumbs:
-        return u'{}{}{}'.format(separator.join(crumbs), separator, platform_name)
+        return f'{separator.join(crumbs)}{separator}{platform_name}'
     else:
         return platform_name

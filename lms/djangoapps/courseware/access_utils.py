@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from logging import getLogger
 
 from django.conf import settings
-from django.utils.translation import ugettext as _  # lint-amnesty, pylint: disable=unused-import
 from pytz import UTC
 from lms.djangoapps.courseware.access_response import (
     AccessResponse,
@@ -57,7 +56,7 @@ def adjust_start_date(user, days_early_for_beta, start, course_key):
         return start
 
     if CourseBetaTesterRole(course_key).has_user(user):
-        debug(u"Adjust start time: user in beta role for %s", course_key)
+        debug("Adjust start time: user in beta role for %s", course_key)
         delta = timedelta(days_early_for_beta)
         effective = start - delta
         return effective

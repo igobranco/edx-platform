@@ -5,13 +5,17 @@ Factories for Badge tests
 
 from random import random
 
-import factory  # lint-amnesty, pylint: disable=import-error
+import factory
 from django.core.files.base import ContentFile
-from factory import DjangoModelFactory  # lint-amnesty, pylint: disable=import-error
-from factory.django import ImageField  # lint-amnesty, pylint: disable=import-error
+from factory.django import ImageField
 
-from lms.djangoapps.badges.models import BadgeAssertion, BadgeClass, CourseCompleteImageConfiguration, CourseEventBadgesConfiguration  # lint-amnesty, pylint: disable=line-too-long
 from common.djangoapps.student.tests.factories import UserFactory
+from lms.djangoapps.badges.models import (  # lint-amnesty, pylint: disable=line-too-long
+    BadgeAssertion,
+    BadgeClass,
+    CourseCompleteImageConfiguration,
+    CourseEventBadgesConfiguration
+)
 
 
 def generate_dummy_image(_unused):
@@ -25,22 +29,22 @@ def generate_dummy_image(_unused):
     )
 
 
-class CourseCompleteImageConfigurationFactory(DjangoModelFactory):
+class CourseCompleteImageConfigurationFactory(factory.django.DjangoModelFactory):
     """
     Factory for BadgeImageConfigurations
     """
-    class Meta(object):
+    class Meta:
         model = CourseCompleteImageConfiguration
 
     mode = 'honor'
     icon = factory.LazyAttribute(generate_dummy_image)
 
 
-class BadgeClassFactory(DjangoModelFactory):
+class BadgeClassFactory(factory.django.DjangoModelFactory):
     """
     Factory for BadgeClass
     """
-    class Meta(object):
+    class Meta:
         model = BadgeClass
 
     slug = 'test_slug'
@@ -59,11 +63,11 @@ class RandomBadgeClassFactory(BadgeClassFactory):
     slug = factory.lazy_attribute(lambda _: 'test_slug_' + str(random()).replace('.', '_'))
 
 
-class BadgeAssertionFactory(DjangoModelFactory):
+class BadgeAssertionFactory(factory.django.DjangoModelFactory):
     """
     Factory for BadgeAssertions
     """
-    class Meta(object):
+    class Meta:
         model = BadgeAssertion
 
     user = factory.SubFactory(UserFactory)
@@ -73,11 +77,11 @@ class BadgeAssertionFactory(DjangoModelFactory):
     image_url = 'http://example.com/image.png'
 
 
-class CourseEventBadgesConfigurationFactory(DjangoModelFactory):
+class CourseEventBadgesConfigurationFactory(factory.django.DjangoModelFactory):
     """
     Factory for CourseEventsBadgesConfiguration
     """
-    class Meta(object):
+    class Meta:
         model = CourseEventBadgesConfiguration
 
     enabled = True

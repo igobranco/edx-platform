@@ -28,10 +28,15 @@ def generate_activation_email_context(user, registration):
         'key': registration.activation_key,
         'lms_url': configuration_helpers.get_value('LMS_ROOT_URL', settings.LMS_ROOT_URL),
         'platform_name': configuration_helpers.get_value('PLATFORM_NAME', settings.PLATFORM_NAME),
+        'contact_mailing_address': configuration_helpers.get_value(
+            'contact_mailing_address',
+            settings.CONTACT_MAILING_ADDRESS
+        ),
         'support_url': configuration_helpers.get_value(
             'ACTIVATION_EMAIL_SUPPORT_LINK', settings.ACTIVATION_EMAIL_SUPPORT_LINK
         ) or settings.SUPPORT_SITE_LINK,
         'support_email': configuration_helpers.get_value('CONTACT_EMAIL', settings.CONTACT_EMAIL),
+        'site_configuration_values': configuration_helpers.get_current_site_configuration_values(),
     })
     return context
 
@@ -72,6 +77,6 @@ def should_send_proctoring_requirements_email(username, course_id):
         settings={'is_time_limited': True}
     )
 
-    has_proctored_exam = any([exam.is_proctored_exam for exam in timed_exams])
+    has_proctored_exam = any(exam.is_proctored_exam for exam in timed_exams)
 
     return has_proctored_exam

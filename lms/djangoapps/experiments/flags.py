@@ -10,9 +10,10 @@ import pytz
 from crum import get_current_request
 from edx_django_utils.cache import RequestCache
 
+from common.djangoapps.track import segment
+from common.djangoapps.course_modes.models import CourseMode
 from lms.djangoapps.experiments.stable_bucketing import stable_bucketing_hash_group
 from openedx.core.djangoapps.waffle_utils import CourseWaffleFlag
-from common.djangoapps.track import segment
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class ExperimentWaffleFlag(CourseWaffleFlag):
         self.num_buckets = num_buckets
         self.experiment_id = experiment_id
         self.bucket_flags = [
-            CourseWaffleFlag(waffle_namespace, '{}.{}'.format(flag_name, bucket), module_name)
+            CourseWaffleFlag(waffle_namespace, f'{flag_name}.{bucket}', module_name)  # lint-amnesty, pylint: disable=toggle-missing-annotation
             for bucket in range(num_buckets)
         ]
         self.use_course_aware_bucketing = use_course_aware_bucketing
@@ -205,9 +206,9 @@ class ExperimentWaffleFlag(CourseWaffleFlag):
         # buckets for different course-runs.
         experiment_name = bucketing_group_name = self.name
         if course_key:
-            experiment_name += ".{}".format(course_key)
+            experiment_name += f".{course_key}"
         if course_key and self.use_course_aware_bucketing:
-            bucketing_group_name += ".{}".format(course_key)
+            bucketing_group_name += f".{course_key}"
 
         # Check if we have a cache for this request already
         request_cache = RequestCache('experiments')
@@ -239,7 +240,7 @@ class ExperimentWaffleFlag(CourseWaffleFlag):
                 bucketing_group_name, self.num_buckets, user
             )
 
-        session_key = 'tracked.{}'.format(experiment_name)
+        session_key = f'tracked.{experiment_name}'
         anonymous = not hasattr(request, 'user') or not request.user.id
         if (
                 track and hasattr(request, 'session') and
@@ -262,6 +263,21 @@ class ExperimentWaffleFlag(CourseWaffleFlag):
 
             # Mark that we've recorded this bucketing, so that we don't do it again this session
             request.session[session_key] = True
+
+            # Temporary event for AA-759 experiment
+            if course_key and self._experiment_name == 'AA-759':
+                modes_dict = CourseMode.modes_for_course_dict(course_id=course_key, include_expired=False)
+                verified_mode = modes_dict.get('verified', None)
+                if verified_mode:
+                    segment.track(
+                        user_id=user.id,
+                        event_name='edx.bi.experiment.AA759.bucketed',
+                        properties={
+                            'course_id': course_key,
+                            'bucket': bucket,
+                            'sku': verified_mode.sku,
+                        }
+                    )
 
         return self._cache_bucket(experiment_name, bucket)
 

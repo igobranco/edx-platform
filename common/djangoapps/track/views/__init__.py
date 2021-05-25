@@ -6,7 +6,7 @@ import six
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.http import HttpResponse
 from eventtracking import tracker as eventtracker
-from ipware.ip import get_ip
+from ipware.ip import get_client_ip
 
 from common.djangoapps.track import contexts, shim, tracker
 
@@ -22,7 +22,7 @@ def _get_request_header(request, header_name, default=''):
 def _get_request_ip(request, default=''):
     """Helper method to get IP from a request's META dict, if present."""
     if request is not None and hasattr(request, 'META'):
-        return get_ip(request)
+        return get_client_ip(request)[0]
     else:
         return default
 
@@ -80,7 +80,7 @@ def user_track(request):
     data = _get_request_value(request, 'event', {})
     page = _get_request_value(request, 'page')
 
-    if isinstance(data, six.string_types) and len(data) > 0:
+    if isinstance(data, str) and len(data) > 0:
         try:
             data = json.loads(data)
             _add_user_id_for_username(data)

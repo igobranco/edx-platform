@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This config file runs the simplest dev environment using sqlite, and db-based
 sessions. Assumes structure:
@@ -15,17 +14,13 @@ sessions. Assumes structure:
 
 
 import logging
-import os
 from collections import OrderedDict
-from random import choice  # lint-amnesty, pylint: disable=unused-import
-from string import digits, ascii_letters, punctuation  # lint-amnesty, pylint: disable=unused-import
 from uuid import uuid4
 
 import openid.oidutil
 from django.utils.translation import ugettext_lazy
 from edx_django_utils.plugins import add_plugins
 from path import Path as path
-from six.moves import range  # lint-amnesty, pylint: disable=unused-import
 
 from openedx.core.djangoapps.plugins.constants import ProjectType, SettingsType
 from openedx.core.lib.derived import derive_settings
@@ -86,6 +81,8 @@ FEATURES['ENABLE_ENROLLMENT_TRACK_USER_PARTITION'] = True
 
 FEATURES['ENABLE_BULK_ENROLLMENT_VIEW'] = True
 
+FEATURES['ENABLE_BULK_USER_RETIREMENT'] = True
+
 DEFAULT_MOBILE_AVAILABLE = True
 
 # Need wiki for courseware views to work. TODO (vshnayder): shouldn't need it.
@@ -130,7 +127,7 @@ COMMENTS_SERVICE_URL = 'http://localhost:4567'
 
 DJFS = {
     'type': 'osfs',
-    'directory_root': '{}/django-pyfs/static/django-pyfs'.format(DATA_DIR),
+    'directory_root': f'{DATA_DIR}/django-pyfs/static/django-pyfs',
     'url_root': '/static/django-pyfs',
 }
 
@@ -168,7 +165,7 @@ update_module_store_settings(
     doc_store_settings={
         'host': MONGO_HOST,
         'port': MONGO_PORT_NUM,
-        'db': 'test_xmodule_{}'.format(THIS_UUID),
+        'db': f'test_xmodule_{THIS_UUID}',
         'collection': 'test_modulestore',
     },
 )
@@ -177,7 +174,7 @@ CONTENTSTORE = {
     'ENGINE': 'xmodule.contentstore.mongo.MongoContentStore',
     'DOC_STORE_CONFIG': {
         'host': MONGO_HOST,
-        'db': 'test_xcontent_{}'.format(THIS_UUID),
+        'db': f'test_xcontent_{THIS_UUID}',
         'port': MONGO_PORT_NUM,
     }
 }
@@ -274,10 +271,6 @@ OAUTH_ENFORCE_SECURE = False
 ########################### External REST APIs #################################
 FEATURES['ENABLE_MOBILE_REST_API'] = True
 FEATURES['ENABLE_VIDEO_ABSTRACTION_LAYER_API'] = True
-
-########################### SYSADMIN DASHBOARD ################################
-FEATURES['ENABLE_SYSADMIN_DASHBOARD'] = True
-GIT_REPO_DIR = TEST_ROOT / "course_repos"
 
 ################################# CELERY ######################################
 
@@ -384,8 +377,8 @@ openid.oidutil.log = lambda message, level=0: None
 
 # Include a non-ascii character in PLATFORM_NAME and PLATFORM_DESCRIPTION to uncover possible
 # UnicodeEncodeErrors in tests. Also use lazy text to reveal possible json dumps errors
-PLATFORM_NAME = ugettext_lazy(u"édX")
-PLATFORM_DESCRIPTION = ugettext_lazy(u"Open édX Platform")
+PLATFORM_NAME = ugettext_lazy("édX")
+PLATFORM_DESCRIPTION = ugettext_lazy("Open édX Platform")
 
 SITE_NAME = "edx.org"
 
@@ -478,7 +471,7 @@ COURSE_BLOCKS_API_EXTRA_FIELDS = [
 ]
 
 COURSE_CATALOG_URL_ROOT = 'https://catalog.example.com'
-COURSE_CATALOG_API_URL = '{}/api/v1'.format(COURSE_CATALOG_URL_ROOT)
+COURSE_CATALOG_API_URL = f'{COURSE_CATALOG_URL_ROOT}/api/v1'
 
 COMPREHENSIVE_THEME_DIRS = [REPO_ROOT / "themes", REPO_ROOT / "common/test"]
 COMPREHENSIVE_THEME_LOCALE_PATHS = [REPO_ROOT / "themes/conf/locale", ]
@@ -597,8 +590,10 @@ RATELIMIT_RATE = '2/m'
 LOGISTRATION_RATELIMIT_RATE = '5/5m'
 LOGISTRATION_PER_EMAIL_RATELIMIT_RATE = '6/5m'
 LOGISTRATION_API_RATELIMIT = '5/m'
+LOGIN_AND_REGISTER_FORM_RATELIMIT = '5/5m'
 
 REGISTRATION_VALIDATION_RATELIMIT = '5/minute'
+REGISTRATION_RATELIMIT = '5/minute'
 
-# Don't tolerate deprecated edx-platform import usage in tests.
-ERROR_ON_DEPRECATED_EDX_PLATFORM_IMPORTS = True
+RESET_PASSWORD_TOKEN_VALIDATE_API_RATELIMIT = '2/m'
+RESET_PASSWORD_API_RATELIMIT = '2/m'

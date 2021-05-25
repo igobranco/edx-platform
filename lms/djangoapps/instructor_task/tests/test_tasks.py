@@ -7,15 +7,13 @@ paths actually work.
 
 
 import json
-from functools import partial  # lint-amnesty, pylint: disable=unused-import
+from unittest.mock import MagicMock, Mock, patch
 from uuid import uuid4
 import pytest
 import ddt
 from celery.states import FAILURE, SUCCESS
 from django.utils.translation import ugettext_noop
-from mock import MagicMock, Mock, patch
 from opaque_keys.edx.keys import i4xEncoder
-from six.moves import range
 
 from common.djangoapps.course_modes.models import CourseMode
 from lms.djangoapps.courseware.models import StudentModule
@@ -26,12 +24,12 @@ from lms.djangoapps.instructor_task.tasks import (
     delete_problem_state,
     export_ora2_data,
     export_ora2_submission_files,
+    export_ora2_summary,
     generate_certificates,
     override_problem_score,
     rescore_problem,
     reset_problem_attempts
 )
-from lms.djangoapps.instructor_task.tasks_helper.misc import upload_ora2_data  # lint-amnesty, pylint: disable=unused-import
 from lms.djangoapps.instructor_task.tests.factories import InstructorTaskFactory
 from lms.djangoapps.instructor_task.tests.test_base import InstructorTaskModuleTestCase
 from xmodule.modulestore.exceptions import ItemNotFoundError
@@ -52,7 +50,7 @@ class TestInstructorTasks(InstructorTaskModuleTestCase):
     """
 
     def setUp(self):
-        super(TestInstructorTasks, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.initialize_course()
         self.instructor = self.create_instructor('instructor')
         self.location = self.problem_location(PROBLEM_URL_NAME)
@@ -436,8 +434,10 @@ class TestRescoreInstructorTask(TestInstructorTasks):
         entry = InstructorTask.objects.get(id=task_entry.id)
         output = json.loads(entry.task_output)
         assert output['exception'] == 'UpdateProblemModuleStateError'
-        assert output['message'] == u'Specified module {0} of type {1} does not support rescoring.'\
-            .format(self.location, mock_instance.__class__)
+        assert output['message'] == 'Specified module {} of type {} does not support rescoring.'.format(
+            self.location,
+            mock_instance.__class__,
+        )
         assert len(output['traceback']) > 0
 
     def test_rescoring_unaccessable(self):
@@ -707,6 +707,36 @@ class TestOra2ExportSubmissionFilesInstructorTask(TestInstructorTasks):
         with patch('lms.djangoapps.instructor_task.tasks.run_main_task') as mock_main_task:
             export_ora2_submission_files(task_entry.id, task_xmodule_args)
             action_name = ugettext_noop('compressed')
+
+            assert mock_main_task.call_count == 1
+            args = mock_main_task.call_args[0]
+            assert args[0] == task_entry.id
+            assert callable(args[1])
+            assert args[2] == action_name
+
+
+class TestOra2SummaryInstructorTask(TestInstructorTasks):
+    """Tests instructor task that fetches ora2 response summary."""
+
+    def test_ora2_missing_current_task(self):
+        self._test_missing_current_task(export_ora2_summary)
+
+    def test_ora2_with_failure(self):
+        self._test_run_with_failure(export_ora2_summary, 'We expected this to fail')
+
+    def test_ora2_with_long_error_msg(self):
+        self._test_run_with_long_error_msg(export_ora2_summary)
+
+    def test_ora2_with_short_error_msg(self):
+        self._test_run_with_short_error_msg(export_ora2_summary)
+
+    def test_ora2_runs_task(self):
+        task_entry = self._create_input_entry()
+        task_xmodule_args = self._get_xmodule_instance_args()
+
+        with patch('lms.djangoapps.instructor_task.tasks.run_main_task') as mock_main_task:
+            export_ora2_summary(task_entry.id, task_xmodule_args)
+            action_name = ugettext_noop('generated')
 
             assert mock_main_task.call_count == 1
             args = mock_main_task.call_args[0]

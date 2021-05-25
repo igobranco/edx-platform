@@ -1,4 +1,4 @@
-"""  # lint-amnesty, pylint: disable=django-not-configured
+"""
 gunicorn configuration file: http://docs.gunicorn.org/en/stable/configure.html
 """
 
@@ -11,7 +11,7 @@ workers = 17
 
 
 def pre_request(worker, req):
-    worker.log.info("%s %s" % (req.method, req.path))
+    worker.log.info(f"{req.method} {req.path}")
 
 
 def close_all_caches():

@@ -6,11 +6,8 @@ CourseDetails
 import logging
 import re
 
-import six
 from django.conf import settings
 
-from openedx.core.djangoapps.models.config.waffle import enable_course_detail_update_certificate_date
-from openedx.core.djangoapps.signals.signals import COURSE_CERT_DATE_CHANGE
 from openedx.core.djangolib.markup import HTML
 from openedx.core.lib.courses import course_image_url
 from xmodule.fields import Date
@@ -36,7 +33,7 @@ ABOUT_ATTRIBUTES = [
 ]
 
 
-class CourseDetails(object):
+class CourseDetails:
     """
     An interface for extracting course information from the modulestore.
     """
@@ -85,7 +82,7 @@ class CourseDetails(object):
         Retrieve an attribute from a course's "about" info
         """
         if attribute not in ABOUT_ATTRIBUTES + ['video']:
-            raise ValueError(u"'{0}' is not a valid course about attribute.".format(attribute))
+            raise ValueError(f"'{attribute}' is not a valid course about attribute.")
 
         usage_key = course_key.make_usage_key('about', attribute)
         try:
@@ -154,7 +151,7 @@ class CourseDetails(object):
         """
         video_id = cls.fetch_youtube_video_id(course_key)
         if video_id:
-            return "http://www.youtube.com/watch?v={0}".format(video_id)
+            return f"http://www.youtube.com/watch?v={video_id}"
 
     @classmethod
     def update_about_item(cls, course, about_key, data, user_id, store=None):
@@ -246,8 +243,6 @@ class CourseDetails(object):
         if converted != descriptor.certificate_available_date:
             dirty = True
             descriptor.certificate_available_date = converted
-            if enable_course_detail_update_certificate_date(course_key):
-                COURSE_CERT_DATE_CHANGE.send_robust(sender=cls, course_key=six.text_type(course_key))
 
         if 'course_image_name' in jsondict and jsondict['course_image_name'] != descriptor.course_image:
             descriptor.course_image = jsondict['course_image_name']
@@ -339,7 +334,7 @@ class CourseDetails(object):
         result = None
         if video_key:
             result = (
-                HTML(u'<iframe title="YouTube Video" width="560" height="315" src="//www.youtube.com/embed/{}?rel=0" '
+                HTML('<iframe title="YouTube Video" width="560" height="315" src="//www.youtube.com/embed/{}?rel=0" '
                      'frameborder="0" allowfullscreen=""></iframe>').format(video_key)
             )
         return result

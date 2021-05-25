@@ -4,18 +4,15 @@ Tests for student enrollment.
 
 
 import unittest
-import pytest
+from unittest.mock import patch
 
 import ddt
-import six
+import pytest
 from django.conf import settings
 from django.urls import reverse
-from edx_toggles.toggles.testutils import override_waffle_flag
-from mock import patch
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.course_modes.tests.factories import CourseModeFactory
-from openedx.core.djangoapps.embargo.test_utils import restrict_course
 from common.djangoapps.student.models import (
     SCORE_RECALCULATION_DELAY_ON_ENROLLMENT_UPDATE,
     CourseEnrollment,
@@ -25,13 +22,12 @@ from common.djangoapps.student.models import (
 from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRole
 from common.djangoapps.student.tests.factories import CourseEnrollmentAllowedFactory, UserFactory
 from common.djangoapps.util.testing import UrlResetMixin
-from lms.djangoapps.courseware.toggles import COURSEWARE_PROCTORING_IMPROVEMENTS
+from openedx.core.djangoapps.embargo.test_utils import restrict_course
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 
 
 @ddt.ddt
-@override_waffle_flag(COURSEWARE_PROCTORING_IMPROVEMENTS, active=True)
 @patch.dict('django.conf.settings.FEATURES', {'ENABLE_SPECIAL_EXAMS': True})
 @unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
 class EnrollmentTest(UrlResetMixin, SharedModuleStoreTestCase):
@@ -46,7 +42,7 @@ class EnrollmentTest(UrlResetMixin, SharedModuleStoreTestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(EnrollmentTest, cls).setUpClass()
+        super().setUpClass()
         cls.course = CourseFactory.create()
         cls.course_limited = CourseFactory.create()
         cls.proctored_course = CourseFactory(
@@ -59,13 +55,13 @@ class EnrollmentTest(UrlResetMixin, SharedModuleStoreTestCase):
     @patch.dict(settings.FEATURES, {'EMBARGO': True})
     def setUp(self):
         """ Create a course and user, then log in. """
-        super(EnrollmentTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user = UserFactory.create(username=self.USERNAME, email=self.EMAIL, password=self.PASSWORD)
         self.client.login(username=self.USERNAME, password=self.PASSWORD)
         self.course_limited.max_student_enrollments_allowed = 1
         self.store.update_item(self.course_limited, self.user.id)
         self.urls = [
-            reverse('course_modes_choose', kwargs={'course_id': six.text_type(self.course.id)})
+            reverse('course_modes_choose', kwargs={'course_id': str(self.course.id)})
         ]
         # Set up proctored exam
         self._create_proctored_exam(self.proctored_course)
@@ -123,7 +119,7 @@ class EnrollmentTest(UrlResetMixin, SharedModuleStoreTestCase):
         # (otherwise, use an empty string, which the JavaScript client
         # interprets as a redirect to the dashboard)
         full_url = (
-            reverse(next_url, kwargs={'course_id': six.text_type(self.course.id)})
+            reverse(next_url, kwargs={'course_id': str(self.course.id)})
             if next_url else next_url
         )
 
@@ -153,6 +149,37 @@ class EnrollmentTest(UrlResetMixin, SharedModuleStoreTestCase):
 
         # Expect that we're no longer enrolled
         assert not CourseEnrollment.is_enrolled(self.user, self.course.id)
+
+    @ddt.data(-1, 0, 1)
+    def test_external_course_updates_signal(self, value):
+        """Confirm that we send the external updates experiment bucket with the activation signal"""
+        with patch('openedx.core.djangoapps.schedules.config.set_up_external_updates_for_enrollment',
+                   return_value=value):
+            with patch('common.djangoapps.student.models.segment') as mock_segment:
+                CourseEnrollment.enroll(self.user, self.course.id)
+
+        assert mock_segment.track.call_count == 1
+        assert mock_segment.track.call_args[0][1] == 'edx.course.enrollment.activated'
+        assert mock_segment.track.call_args[0][2]['external_course_updates'] == value
+
+    def test_enrollment_properties_in_segment_traits(self):
+        with patch('common.djangoapps.student.models.segment') as mock_segment:
+            enrollment = CourseEnrollment.enroll(self.user, self.course.id)
+        assert mock_segment.track.call_count == 1
+        assert mock_segment.track.call_args[0][1] == 'edx.course.enrollment.activated'
+        traits = mock_segment.track.call_args[1]['traits']
+        assert traits['course_title'] == self.course.display_name
+        assert traits['mode'] == 'audit'
+        assert traits['email'] == self.EMAIL
+
+        with patch('common.djangoapps.student.models.segment') as mock_segment:
+            enrollment.update_enrollment(mode='verified')
+        assert mock_segment.track.call_count == 1
+        assert mock_segment.track.call_args[0][1] == 'edx.course.enrollment.mode_changed'
+        traits = mock_segment.track.call_args[1]['traits']
+        assert traits['course_title'] == self.course.display_name
+        assert traits['mode'] == 'verified'
+        assert traits['email'] == self.EMAIL
 
     @patch.dict(settings.FEATURES, {'ENABLE_MKTG_EMAIL_OPT_IN': True})
     @patch('openedx.core.djangoapps.user_api.preferences.api.update_email_opt_in')
@@ -372,7 +399,7 @@ class EnrollmentTest(UrlResetMixin, SharedModuleStoreTestCase):
 
         """
         if course_id is None:
-            course_id = six.text_type(self.course.id)
+            course_id = str(self.course.id)
 
         params = {
             'enrollment_action': action,

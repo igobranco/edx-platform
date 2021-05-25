@@ -41,7 +41,7 @@ from django.db import models
 from model_utils.models import TimeStampedModel
 
 from opaque_keys.edx.django.models import (  # lint-amnesty, pylint: disable=unused-import
-    CourseKeyField, LearningContextKeyField, UsageKeyField
+    LearningContextKeyField, UsageKeyField
 )
 from .data import CourseVisibility
 
@@ -58,14 +58,17 @@ class LearningContext(TimeStampedModel):
     context_key = LearningContextKeyField(
         max_length=255, db_index=True, unique=True, null=False
     )
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, db_index=True)
     published_at = models.DateTimeField(null=False)
     published_version = models.CharField(max_length=255)
 
     class Meta:
         indexes = [
-            models.Index(fields=['-published_at'])
+            models.Index(fields=['-published_at']),
         ]
+
+    def __str__(self):
+        return f"LearningContext for {self.context_key}"
 
 
 class CourseContext(TimeStampedModel):
@@ -83,6 +86,13 @@ class CourseContext(TimeStampedModel):
     days_early_for_beta = models.IntegerField(null=True, blank=True)
     self_paced = models.BooleanField(default=False)
     entrance_exam_id = models.CharField(max_length=255, null=True)
+
+    class Meta:
+        verbose_name = 'Course'
+        verbose_name_plural = 'Courses'
+
+    def __str__(self):
+        return f"{self.learning_context.context_key} ({self.learning_context.title})"
 
 
 class LearningSequence(TimeStampedModel):
@@ -138,12 +148,46 @@ class CourseContentVisibilityMixin(models.Model):
         abstract = True
 
 
+class UserPartitionGroup(models.Model):
+    """
+    Each row represents a Group in a UserPartition.
+
+    UserPartitions is a pluggable interface. Some IDs are static (with values
+    less than 100). Others are dynamic, picking a range between 100 and 2^31-1.
+    That means that technically, we could use IntegerField instead of
+    BigIntegerField, but a) that limit isn't actually enforced as far as I can
+    tell; and b) it's not _that_ much extra storage, so I'm using BigInteger
+    instead (2^63-1).
+
+    It's a pluggable interface (entry points: openedx.user_partition_scheme,
+    openedx.dynamic_partition_generator), so there's no "UserPartition" model.
+    We need to actually link this against the values passed back from the
+    partitions service in order to map them to names and descriptions.
+
+    Any CourseSection or CourseSectionSequence may be associated with any number
+    of UserPartitionGroups. An individual _user_ may only be in one Group for
+    any given User Partition, but a piece of _content_ can be associated with
+    multiple groups. So for instance, for the Enrollment Track user partition,
+    a piece of content may be associated with both "Verified" and "Masters"
+    tracks, while a user may only be in one or the other.
+
+    UserPartitionGroups are not associated with LearningSequence directly
+    because User Partitions often carry course-level assumptions (e.g.
+    Enrollment Track) that don't make sense outside of a Course.
+    """
+    id = models.BigAutoField(primary_key=True)
+    partition_id = models.BigIntegerField(null=False)
+    group_id = models.BigIntegerField(null=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['partition_id', 'group_id']),
+        ]
+
+
 class CourseSection(CourseContentVisibilityMixin, TimeStampedModel):
     """
     Course Section data, mapping to the 'chapter' block type.
-
-    Do NOT make a foreign key against this table, as the values are deleted and
-    re-created on course publish.
     """
     id = models.BigAutoField(primary_key=True)
     course_context = models.ForeignKey(
@@ -154,6 +198,8 @@ class CourseSection(CourseContentVisibilityMixin, TimeStampedModel):
 
     # What is our position within the Course? (starts with 0)
     ordering = models.PositiveIntegerField(null=False)
+
+    user_partition_groups = models.ManyToManyField(UserPartitionGroup)
 
     class Meta:
         unique_together = [
@@ -193,10 +239,17 @@ class CourseSectionSequence(CourseContentVisibilityMixin, TimeStampedModel):
     # sequences across 20 sections, the numbering here would be 0-199.
     ordering = models.PositiveIntegerField(null=False)
 
+    user_partition_groups = models.ManyToManyField(UserPartitionGroup)
+
     class Meta:
         unique_together = [
             ['course_context', 'ordering'],
         ]
+        verbose_name = 'Course Sequence'
+        verbose_name_plural = 'Course Sequences'
+
+    def __str__(self):
+        return f"{self.section.title} > {self.sequence.title}"
 
 
 class CourseSequenceExam(TimeStampedModel):
@@ -209,3 +262,51 @@ class CourseSequenceExam(TimeStampedModel):
     is_practice_exam = models.BooleanField(default=False)
     is_proctored_enabled = models.BooleanField(default=False)
     is_time_limited = models.BooleanField(default=False)
+
+
+class PublishReport(models.Model):
+    """
+    A report about the content that generated this LearningContext publish.
+
+    All these fields could be derived with aggregate SQL functions, but it would
+    be slower and make the admin code more complex. Since we only write at
+    publish time, keeping things in sync is less of a concern.
+    """
+    learning_context = models.OneToOneField(
+        LearningContext, on_delete=models.CASCADE, related_name='publish_report'
+    )
+    num_errors = models.PositiveIntegerField(null=False, db_index=True)
+    num_sections = models.PositiveIntegerField(null=False, db_index=True)
+    num_sequences = models.PositiveIntegerField(null=False, db_index=True)
+
+
+class ContentError(models.Model):
+    """
+    Human readable content errors.
+
+    If something got here, it means that we were able to make _something_ (or
+    there would be no LearningContext at all), but something about the published
+    state of the content is wrong and should be flagged to course and support
+    teams. In many cases, this will be some malformed course structure that gets
+    uploaded via OLX import–a process that is more forgiving than Studio's UI.
+
+    It's a little weird to store errors in such a freeform manner like this. It
+    would be more efficient and flexible in terms of i18n if we were to store
+    error codes, and leave the message generation to the time of display. The
+    problem with that is that we don't know up front what the parameterization
+    for such errors would be. The current error messages being created are
+    fairly complicated and include references to multiple attributes of multiple
+    pieces of content with supporting breadcrumbs. Other future errors might
+    just be about display_name string length.
+
+    So instead of trying to model all that internally, I'm just allowing for
+    freeform messages. It is quite possible that at some point we will come up
+    with a more comprehensive taxonomy of error messages, at which point we
+    could do a backfill to regenerate this data in a more normalized way.
+    """
+    id = models.BigAutoField(primary_key=True)
+    publish_report = models.ForeignKey(
+        PublishReport, on_delete=models.CASCADE, related_name='content_errors'
+    )
+    usage_key = UsageKeyField(max_length=255, null=True)
+    message = models.TextField(max_length=10000, blank=False, null=False)

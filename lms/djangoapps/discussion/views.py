@@ -6,7 +6,6 @@ Views handling read (GET) requests for the Discussion tab and inline discussions
 import logging
 from functools import wraps
 
-import six
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
@@ -28,6 +27,8 @@ from web_fragments.fragment import Fragment
 
 import lms.djangoapps.discussion.django_comment_client.utils as utils
 import openedx.core.djangoapps.django_comment_common.comment_client as cc
+from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.util.json_request import JsonResponse, expect_json
 from lms.djangoapps.courseware.access import has_access
 from lms.djangoapps.courseware.courses import get_course_with_access
 from lms.djangoapps.courseware.views.views import CourseTabView
@@ -50,15 +51,9 @@ from lms.djangoapps.discussion.exceptions import TeamDiscussionHiddenFromUserExc
 from lms.djangoapps.experiments.utils import get_experiment_user_metadata_context
 from lms.djangoapps.teams import api as team_api
 from openedx.core.djangoapps.django_comment_common.models import CourseDiscussionSettings
-from openedx.core.djangoapps.django_comment_common.utils import (
-    ThreadContext,
-    get_course_discussion_settings,
-    set_course_discussion_settings
-)
+from openedx.core.djangoapps.django_comment_common.utils import ThreadContext
 from openedx.core.djangoapps.plugin_api.views import EdxFragmentView
 from openedx.features.course_duration_limits.access import generate_course_expired_fragment
-from common.djangoapps.student.models import CourseEnrollment
-from common.djangoapps.util.json_request import JsonResponse, expect_json
 from xmodule.modulestore.django import modulestore
 
 log = logging.getLogger("edx.discussions")
@@ -77,14 +72,14 @@ def make_course_settings(course, user, include_category_map=True):
     Generate a JSON-serializable model for course settings, which will be used to initialize a
     DiscussionCourseSettings object on the client.
     """
-    course_discussion_settings = get_course_discussion_settings(course.id)
+    course_discussion_settings = CourseDiscussionSettings.get(course.id)
     group_names_by_id = get_group_names_by_id(course_discussion_settings)
     course_setting = {
         'is_discussion_division_enabled': course_discussion_division_enabled(course_discussion_settings),
         'allow_anonymous': course.allow_anonymous,
         'allow_anonymous_to_peers': course.allow_anonymous_to_peers,
         'groups': [
-            {"id": str(group_id), "name": group_name} for group_id, group_name in six.iteritems(group_names_by_id)
+            {"id": str(group_id), "name": group_name} for group_id, group_name in group_names_by_id.items()
         ]
     }
     if include_category_map:
@@ -100,7 +95,7 @@ def get_threads(request, course, user_info, discussion_id=None, per_page=THREADS
 
     Arguments:
         request (WSGIRequest): The user request.
-        course (CourseDescriptorWithMixins): The course object.
+        course (CourseBlockWithMixins): The course object.
         user_info (dict): The comment client User object as a dict.
         discussion_id (unicode): Optional discussion id/commentable id for context.
         per_page (int): Optional number of threads per page.
@@ -115,7 +110,7 @@ def get_threads(request, course, user_info, discussion_id=None, per_page=THREADS
         'per_page': per_page,
         'sort_key': 'activity',
         'text': '',
-        'course_id': six.text_type(course.id),
+        'course_id': str(course.id),
         'user_id': request.user.id,
         'context': ThreadContext.COURSE,
         'group_id': get_group_id_for_comments_service(request, course.id, discussion_id),  # may raise ValueError
@@ -226,7 +221,7 @@ def inline_discussion(request, course_key, discussion_id):
 
     with function_trace('determine_group_permissions'):
         is_staff = has_permission(request.user, 'openclose_thread', course.id)
-        course_discussion_settings = get_course_discussion_settings(course.id)
+        course_discussion_settings = CourseDiscussionSettings.get(course.id)
         group_names_by_id = get_group_names_by_id(course_discussion_settings)
         course_is_divided = course_discussion_settings.division_scheme is not CourseDiscussionSettings.NONE
 
@@ -290,7 +285,7 @@ def forum_form_discussion(request, course_key):
             'corrected_text': query_params['corrected_text'],
         })
     else:
-        course_id = six.text_type(course.id)
+        course_id = str(course.id)
         tab_view = CourseTabView()
         return tab_view.get(request, course_id, 'discussion')
 
@@ -344,7 +339,7 @@ def single_thread(request, course_key, discussion_id, thread_id):
             'annotated_content_info': annotated_content_info,
         })
     else:
-        course_id = six.text_type(course.id)
+        course_id = str(course.id)
         tab_view = CourseTabView()
         return tab_view.get(request, course_id, 'discussion', discussion_id=discussion_id, thread_id=thread_id)
 
@@ -379,7 +374,7 @@ def _find_thread(request, course, discussion_id, thread_id):
 
     # verify that the thread belongs to the requesting student's group
     is_moderator = has_permission(request.user, "see_all_cohorts", course.id)
-    course_discussion_settings = get_course_discussion_settings(course.id)
+    course_discussion_settings = CourseDiscussionSettings.get(course.id)
     if is_commentable_divided(course.id, discussion_id, course_discussion_settings) and not is_moderator:
         user_group_id = get_group_id_for_user(request.user, course_discussion_settings)
         if getattr(thread, "group_id", None) is not None and user_group_id != thread.group_id:
@@ -475,7 +470,7 @@ def _create_discussion_board_context(request, base_context, thread=None):
             if "pinned" not in thread:
                 thread["pinned"] = False
         thread_pages = 1
-        root_url = reverse('forum_form_discussion', args=[six.text_type(course.id)])
+        root_url = reverse('forum_form_discussion', args=[str(course.id)])
     else:
         threads, query_params = get_threads(request, course, user_info)   # This might process a search query
         thread_pages = query_params['num_pages']
@@ -490,7 +485,7 @@ def _create_discussion_board_context(request, base_context, thread=None):
         add_courseware_context(threads, course, user)
 
     with function_trace("get_cohort_info"):
-        course_discussion_settings = get_course_discussion_settings(course_key)
+        course_discussion_settings = CourseDiscussionSettings.get(course_key)
         user_group_id = get_group_id_for_user(user, course_discussion_settings)
 
     context.update({
@@ -564,7 +559,7 @@ def create_user_profile_context(request, course_key, user_id):
         ).order_by("name").values_list("name", flat=True).distinct()
 
         with function_trace("get_cohort_info"):
-            course_discussion_settings = get_course_discussion_settings(course_key)
+            course_discussion_settings = CourseDiscussionSettings.get(course_key)
             user_group_id = get_group_id_for_user(request.user, course_discussion_settings)
 
         context = _create_base_discussion_view_context(request, course_key)
@@ -608,7 +603,7 @@ def user_profile(request, course_key, user_id):
             # 'user_profile' page
             context['load_mathjax'] = False
 
-            return tab_view.get(request, six.text_type(course_key), 'discussion', profile_page_context=context)
+            return tab_view.get(request, str(course_key), 'discussion', profile_page_context=context)
     except User.DoesNotExist:
         raise Http404  # lint-amnesty, pylint: disable=raise-missing-from
     except ValueError:
@@ -768,7 +763,7 @@ class DiscussionBoardFragmentView(EdxFragmentView):
             return fragment
         except TeamDiscussionHiddenFromUserException:
             log.warning(
-                u'User with id={user_id} tried to view private discussion with id={discussion_id}'.format(
+                'User with id={user_id} tried to view private discussion with id={discussion_id}'.format(
                     user_id=request.user.id,
                     discussion_id=discussion_id
                 )
@@ -910,7 +905,7 @@ def course_discussions_settings_handler(request, course_key_string):
     """
     course_key = CourseKey.from_string(course_key_string)
     course = get_course_with_access(request.user, 'staff', course_key)
-    discussion_settings = get_course_discussion_settings(course_key)
+    discussion_settings = CourseDiscussionSettings.get(course_key)
 
     if request.method == 'PATCH':
         divided_course_wide_discussions, divided_inline_discussions = get_divided_discussions(
@@ -938,15 +933,15 @@ def course_discussions_settings_handler(request, course_key_string):
             )
 
         if not settings_to_change:
-            return JsonResponse({"error": six.text_type("Bad Request")}, 400)
+            return JsonResponse({"error": "Bad Request"}, 400)
 
         try:
             if settings_to_change:
-                discussion_settings = set_course_discussion_settings(course_key, **settings_to_change)
+                discussion_settings.update(settings_to_change)
 
         except ValueError as err:
             # Note: error message not translated because it is not exposed to the user (UI prevents this state).
-            return JsonResponse({"error": six.text_type(err)}, 400)
+            return JsonResponse({"error": str(err)}, 400)
 
     divided_course_wide_discussions, divided_inline_discussions = get_divided_discussions(
         course, discussion_settings

@@ -8,8 +8,6 @@ from datetime import datetime, timedelta
 import pytest
 import ddt
 from pytz import UTC
-import six
-from six import text_type
 
 from lms.djangoapps.grades.scores import compute_percent
 from xmodule import graders
@@ -43,14 +41,14 @@ class GradesheetTest(unittest.TestCase):
         agg_fields['first_attempted'] = now
         scores.append(ProblemScore(weighted_earned=3, weighted_possible=5, graded=True, **prob_fields))
         all_total, graded_total = aggregate_scores(scores)
-        assert round(all_total - AggregatedScore(tw_earned=3, tw_possible=10, graded=False, **agg_fields), 7) >= 0
-        assert round(graded_total - AggregatedScore(tw_earned=3, tw_possible=5, graded=True, **agg_fields), 7) >= 0
+        assert all_total == AggregatedScore(tw_earned=3, tw_possible=10, graded=False, **agg_fields)
+        assert graded_total == AggregatedScore(tw_earned=3, tw_possible=5, graded=True, **agg_fields)
 
         # (0/5 non-graded) + (3/5 graded) + (2/5 graded) = 5/15 total, 5/10 graded
         scores.append(ProblemScore(weighted_earned=2, weighted_possible=5, graded=True, **prob_fields))
         all_total, graded_total = aggregate_scores(scores)
-        assert round(all_total - AggregatedScore(tw_earned=5, tw_possible=15, graded=False, **agg_fields), 7) >= 0
-        assert round(graded_total - AggregatedScore(tw_earned=5, tw_possible=10, graded=True, **agg_fields), 7) >= 0
+        assert all_total == AggregatedScore(tw_earned=5, tw_possible=15, graded=False, **agg_fields)
+        assert graded_total == AggregatedScore(tw_earned=5, tw_possible=10, graded=True, **agg_fields)
 
 
 @ddt.ddt
@@ -68,7 +66,7 @@ class GraderTest(unittest.TestCase):
         'Midterm': {},
     }
 
-    class MockGrade(object):
+    class MockGrade:
         """
         Mock class for SubsectionGrade object.
         """
@@ -319,25 +317,25 @@ class GraderTest(unittest.TestCase):
         (
             # empty
             {},
-            u"Configuration has no appropriate grader class."
+            "Configuration has no appropriate grader class."
         ),
         (
             # no min_count
             {'type': "Homework", 'drop_count': 0},
-            u"Configuration has no appropriate grader class."
+            "Configuration has no appropriate grader class."
         ),
         (
             # no drop_count
             {'type': "Homework", 'min_count': 0},
             # pylint: disable=line-too-long
-            u"__init__() takes at least 4 arguments (3 given)" if six.PY2 else u"__init__() missing 1 required positional argument: 'drop_count'"
+            "__init__() missing 1 required positional argument: 'drop_count'"
         ),
     )
     @ddt.unpack
     def test_grader_with_invalid_conf(self, invalid_conf, expected_error_message):
         with pytest.raises(ValueError) as error:
             graders.grader_from_conf([invalid_conf])
-        assert expected_error_message in text_type(error.exception)
+        assert expected_error_message in str(error.value)
 
 
 @ddt.ddt
@@ -347,7 +345,7 @@ class ShowCorrectnessTest(unittest.TestCase):
     """
 
     def setUp(self):
-        super(ShowCorrectnessTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         now = datetime.now(UTC)
         day_delta = timedelta(days=1)

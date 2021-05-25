@@ -21,46 +21,46 @@ from openedx.core.djangoapps.credit.models import (
 from common.djangoapps.util.date_utils import to_timestamp
 
 
-class CreditCourseFactory(factory.DjangoModelFactory):
-    class Meta(object):
+class CreditCourseFactory(factory.django.DjangoModelFactory):
+    class Meta:
         model = CreditCourse
 
     course_key = FuzzyText(prefix='fake.org/', suffix='/fake.run')
     enabled = True
 
 
-class CreditRequirementFactory(factory.DjangoModelFactory):
-    class Meta(object):
+class CreditRequirementFactory(factory.django.DjangoModelFactory):
+    class Meta:
         model = CreditRequirement
 
     course = factory.SubFactory(CreditCourseFactory)
 
 
-class CreditRequirementStatusFactory(factory.DjangoModelFactory):
-    class Meta(object):
+class CreditRequirementStatusFactory(factory.django.DjangoModelFactory):
+    class Meta:
         model = CreditRequirementStatus
 
     requirement = factory.SubFactory(CreditRequirementFactory)
     status = CreditRequirementStatus.REQUIREMENT_STATUS_CHOICES[0][0]
 
 
-class CreditProviderFactory(factory.DjangoModelFactory):
-    class Meta(object):
+class CreditProviderFactory(factory.django.DjangoModelFactory):
+    class Meta:
         model = CreditProvider
 
     provider_id = FuzzyText(length=5)
     provider_url = FuzzyText(prefix='http://')
 
 
-class CreditEligibilityFactory(factory.DjangoModelFactory):
-    class Meta(object):
+class CreditEligibilityFactory(factory.django.DjangoModelFactory):
+    class Meta:
         model = CreditEligibility
 
     course = factory.SubFactory(CreditCourseFactory)
 
 
-class CreditRequestFactory(factory.DjangoModelFactory):
-    class Meta(object):
+class CreditRequestFactory(factory.django.DjangoModelFactory):
+    class Meta:
         model = CreditRequest
 
     uuid = factory.LazyAttribute(lambda o: uuid.uuid4().hex)  # pylint: disable=undefined-variable

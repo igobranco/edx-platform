@@ -44,7 +44,7 @@ class CourseMetadataUtilsTestCase(TestCase):
         """
         Set up module store testing capabilities and initialize test courses.
         """
-        super(CourseMetadataUtilsTestCase, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         mongo_builder = MongoModulestoreBuilder()
         split_builder = VersioningModulestoreBuilder()
@@ -70,7 +70,7 @@ class CourseMetadataUtilsTestCase(TestCase):
                     user_id=-3,  # -3 refers to a "testing user"
                     fields={
                         "start": _NEXT_WEEK,
-                        "display_name": "Intro to <html>"
+                        "display_name": "Intro to <div>html</div>"
                     }
                 )
 
@@ -136,13 +136,13 @@ class CourseMetadataUtilsTestCase(TestCase):
                 # Test course with no display name.
                 TestScenario((self.demo_course,), "Empty"),
                 # Test course with a display name that contains characters that need escaping.
-                TestScenario((self.html_course,), "Intro to &lt;html&gt;"),
+                TestScenario((self.html_course,), "Intro to html"),
             ]),
             FunctionTest(display_name_with_default, [
                 # Test course with no display name.
                 TestScenario((self.demo_course,), "Empty"),
                 # Test course with a display name that contains characters that need escaping.
-                TestScenario((self.html_course,), "Intro to <html>"),
+                TestScenario((self.html_course,), "Intro to <div>html</div>"),
             ]),
             FunctionTest(number_for_course_location, [
                 TestScenario((self.demo_course.location,), "DemoX.1"),

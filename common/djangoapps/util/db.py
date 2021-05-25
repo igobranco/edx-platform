@@ -8,9 +8,8 @@ import random
 # TransactionManagementError used below actually *does* derive from the standard "Exception" class.
 # lint-amnesty, pylint: disable=bad-option-value, nonstandard-exception
 from contextlib import contextmanager
-from functools import wraps  # lint-amnesty, pylint: disable=unused-import
 
-from django.db import DEFAULT_DB_ALIAS, DatabaseError, Error, transaction  # lint-amnesty, pylint: disable=unused-import
+from django.db import DEFAULT_DB_ALIAS, transaction  # lint-amnesty, pylint: disable=unused-import
 
 from openedx.core.lib.cache_utils import get_cache
 
@@ -56,7 +55,7 @@ class OuterAtomic(transaction.Atomic):
     def __init__(self, using, savepoint, read_committed=False, name=None):
         self.read_committed = read_committed
         self.name = name
-        super(OuterAtomic, self).__init__(using, savepoint)  # lint-amnesty, pylint: disable=super-with-arguments
+        super().__init__(using, savepoint)
 
     def __enter__(self):
 
@@ -89,7 +88,7 @@ class OuterAtomic(transaction.Atomic):
                     cursor = connection.cursor()
                     cursor.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
 
-        super(OuterAtomic, self).__enter__()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().__enter__()
 
 
 def outer_atomic(using=None, savepoint=True, read_committed=False, name=None):

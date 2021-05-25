@@ -14,7 +14,6 @@ from django.views.defaults import server_error
 from django.shortcuts import redirect
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey, UsageKey
-from six.moves import map
 
 from lms.djangoapps.courseware.access import has_access
 from lms.djangoapps.courseware.masquerade import setup_masquerade
@@ -75,7 +74,7 @@ def require_global_staff(func):
             return func(request, *args, **kwargs)
         else:
             return HttpResponseForbidden(
-                u"Must be {platform_name} staff to perform this action.".format(
+                "Must be {platform_name} staff to perform this action.".format(
                     platform_name=settings.PLATFORM_NAME
                 )
             )
@@ -214,3 +213,13 @@ def reset_course_deadlines(request):
 
     referrer = request.META.get('HTTP_REFERER')
     return redirect(referrer) if referrer else HttpResponse()
+
+
+def expose_header(header, response):
+    """
+    Add a header name to Access-Control-Expose-Headers to allow client code to access that header's value
+    """
+    exposedHeaders = response.get('Access-Control-Expose-Headers', '')
+    exposedHeaders += f', {header}' if exposedHeaders else header
+    response['Access-Control-Expose-Headers'] = exposedHeaders
+    return response

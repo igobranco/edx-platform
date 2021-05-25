@@ -1,4 +1,4 @@
-"""  # lint-amnesty, pylint: disable=django-not-configured
+"""
 Removes user PII from OAuth2 models.
 """
 
@@ -11,7 +11,7 @@ from oauth2_provider.models import (
 )
 
 
-class ModelRetirer(object):
+class ModelRetirer:
     """
     Given a list of model names, provides methods for deleting instances of
     those models.

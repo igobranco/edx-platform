@@ -5,7 +5,6 @@ import gzip
 import logging
 from io import BytesIO
 
-import six
 from config_models.models import ConfigurationModel
 from django.db import models
 from django.utils.text import compress_string
@@ -36,7 +35,7 @@ def decompress_string(value):
     """
 
     try:
-        val = value.encode('utf').decode('base64')
+        val = value.encode('utf').decode('base64')  # lint-amnesty, pylint: disable=invalid-str-codec
         zbuf = BytesIO(val)
         zfile = gzip.GzipFile(fileobj=zbuf)
         ret = zfile.read()
@@ -58,17 +57,17 @@ class CompressedTextField(CreatorMixin, models.TextField):
         Compress the text data.
         """
         if value is not None:
-            if isinstance(value, six.text_type):
+            if isinstance(value, str):
                 value = value.encode('utf8')
             value = compress_string(value)
-            value = value.encode('base64').decode('utf8')
+            value = value.encode('base64').decode('utf8')  # lint-amnesty, pylint: disable=invalid-str-codec
         return value
 
     def to_python(self, value):
         """
         Decompresses the value from the database.
         """
-        if isinstance(value, six.text_type):
+        if isinstance(value, str):
             value = decompress_string(value)
 
         return value

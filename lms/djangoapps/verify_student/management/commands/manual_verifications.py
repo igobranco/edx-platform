@@ -32,27 +32,40 @@ class Command(BaseCommand):
             default=None,
             help='Path of the file to read email id from.',
             type=str,
-            required=True
+        )
+        parser.add_argument(
+            '--email',
+            default=None,
+            help='Single email to verify one user',
+            type=str,
         )
 
     def handle(self, *args, **options):
+
+        single_email = options['email']
+
+        if single_email:
+            successfully_verified = self._add_user_to_manual_verification(single_email)
+            if successfully_verified is False:
+                log.error(f'Manual verification of {single_email} failed')
+            return
 
         email_ids_file = options['email_ids_file']
 
         if email_ids_file:
             if not os.path.exists(email_ids_file):
-                raise CommandError(u'Pass the correct absolute path to email ids file as --email-ids-file argument.')
+                raise CommandError('Pass the correct absolute path to email ids file as --email-ids-file argument.')
 
         total_emails, failed_emails = self._generate_manual_verification_from_file(email_ids_file)
 
         if failed_emails:
-            log.error(u'Completed manual verification. {} of {} failed.'.format(
+            log.error('Completed manual verification. {} of {} failed.'.format(
                 len(failed_emails),
                 total_emails
             ))
-            log.error(u'Failed emails:{}'.format(pformat(failed_emails)))
+            log.error(f'Failed emails:{pformat(failed_emails)}')
         else:
-            log.info(u'Successfully generated manual verification for {} emails.'.format(total_emails))
+            log.info(f'Successfully generated manual verification for {total_emails} emails.')
 
     def _generate_manual_verification_from_file(self, email_ids_file):
         """
@@ -67,22 +80,36 @@ class Command(BaseCommand):
         """
         failed_emails = []
 
-        with open(email_ids_file, 'r') as file_handler:
+        with open(email_ids_file) as file_handler:
             email_ids = file_handler.readlines()
             total_emails = len(email_ids)
-            log.info(u'Creating manual verification for {} emails.'.format(total_emails))
+            log.info(f'Creating manual verification for {total_emails} emails.')
             for email_id in email_ids:
-                try:
-                    email_id = email_id.strip()
-                    user = User.objects.get(email=email_id)
-                    ManualVerification.objects.get_or_create(
-                        user=user,
-                        status='approved',
-                        created_at__gte=earliest_allowed_verification_date(),
-                        defaults={'name': user.profile.name},
-                    )
-                except User.DoesNotExist:
+                successfully_verified = self._add_user_to_manual_verification(email_id)
+                if successfully_verified is False:
                     failed_emails.append(email_id)
-                    err_msg = u'Tried to verify email {}, but user not found'
-                    log.error(err_msg.format(email_id))
         return total_emails, failed_emails
+
+    def _add_user_to_manual_verification(self, email_id):
+        """
+        Generates a single verification for a user.
+
+        Arguments:
+            email_id (str): email of the user to be verified
+
+        Returns:
+            (success): boolean to show if the user has been successfully verified.
+        """
+        try:
+            email_id = email_id.strip()
+            user = User.objects.get(email=email_id)
+            ManualVerification.objects.get_or_create(
+                user=user,
+                status='approved',
+                created_at__gte=earliest_allowed_verification_date(),
+                defaults={'name': user.profile.name},
+            )
+            return True
+        except User.DoesNotExist:
+            log.error(f'Tried to verify email {email_id}, but user not found')
+            return False

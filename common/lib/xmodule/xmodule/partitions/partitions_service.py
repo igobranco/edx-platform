@@ -6,8 +6,6 @@ persist the assignments.
 
 
 import logging
-
-import six  # lint-amnesty, pylint: disable=unused-import
 from django.conf import settings
 
 from openedx.core.lib.cache_utils import request_cached
@@ -73,7 +71,7 @@ def _get_dynamic_partitions(course):
     Return the dynamic user partitions for this course.
     If none exists, returns an empty array.
     """
-    dynamic_partition_generators = DynamicPartitionGeneratorsPluginManager.get_available_plugins().values()
+    dynamic_partition_generators = DynamicPartitionGeneratorsPluginManager.get_available_plugins().values()  # lint-amnesty, pylint: disable=dict-values-not-iterating
     generated_partitions = []
     for generator in dynamic_partition_generators:
         generated_partition = generator(course)
@@ -83,7 +81,7 @@ def _get_dynamic_partitions(course):
     return generated_partitions
 
 
-class PartitionService(object):
+class PartitionService:
     """
     This is an XBlock service that returns information about the user partitions associated
     with a given course.
@@ -138,8 +136,8 @@ class PartitionService(object):
         user_partition = self.get_user_partition(user_partition_id)
         if user_partition is None:
             raise ValueError(
-                "Configuration problem!  No user_partition with id {0} "
-                "in course {1}".format(user_partition_id, self._course_id)
+                "Configuration problem!  No user_partition with id {} "
+                "in course {}".format(user_partition_id, self._course_id)
             )
 
         group = self.get_group(user, user_partition)

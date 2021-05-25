@@ -1,42 +1,31 @@
-# coding=utf-8
 """
 Tests for instructor.basic
 """
 
 
-import ddt
-import datetime  # lint-amnesty, pylint: disable=unused-import, wrong-import-order
-import json  # lint-amnesty, pylint: disable=wrong-import-order
+from unittest.mock import MagicMock, Mock, patch
 
-import pytz  # lint-amnesty, pylint: disable=unused-import
-from django.db.models import Q  # lint-amnesty, pylint: disable=unused-import
-from django.urls import reverse  # lint-amnesty, pylint: disable=unused-import
+import ddt
+import json  # lint-amnesty, pylint: disable=wrong-import-order
 from edx_proctoring.api import create_exam
 from edx_proctoring.models import ProctoredExamStudentAttempt
-from mock import MagicMock, Mock, patch
 from opaque_keys.edx.locator import UsageKey
-from six import text_type  # lint-amnesty, pylint: disable=unused-import
-from six.moves import range, zip
-
-from common.djangoapps.course_modes.models import CourseMode  # lint-amnesty, pylint: disable=unused-import
-from common.djangoapps.course_modes.tests.factories import CourseModeFactory  # lint-amnesty, pylint: disable=unused-import
-from lms.djangoapps.courseware.tests.factories import InstructorFactory
 from lms.djangoapps.instructor_analytics.basic import (  # lint-amnesty, pylint: disable=unused-import
     AVAILABLE_FEATURES,
     PROFILE_FEATURES,
+    PROGRAM_ENROLLMENT_FEATURES,
     STUDENT_FEATURES,
     StudentModule,
-    coupon_codes_features,
-    course_registration_features,
     enrolled_students_features,
     get_proctored_exam_results,
     get_response_state,
     list_may_enroll,
-    list_problem_responses,
+    list_problem_responses
 )
+from lms.djangoapps.program_enrollments.tests.factories import ProgramEnrollmentFactory
 from openedx.core.djangoapps.course_groups.tests.helpers import CohortFactory
 from common.djangoapps.student.models import CourseEnrollment, CourseEnrollmentAllowed
-from common.djangoapps.student.roles import CourseSalesAdminRole  # lint-amnesty, pylint: disable=unused-import
+from common.djangoapps.student.tests.factories import InstructorFactory
 from common.djangoapps.student.tests.factories import UserFactory
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory
@@ -47,7 +36,7 @@ class TestAnalyticsBasic(ModuleStoreTestCase):
     """ Test basic analytics functions. """
 
     def setUp(self):
-        super(TestAnalyticsBasic, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course_key = self.store.make_course_key('robot', 'course', 'id')
         self.users = tuple(UserFactory() for _ in range(30))
         self.ces = tuple(CourseEnrollment.enroll(user, self.course_key)
@@ -55,8 +44,8 @@ class TestAnalyticsBasic(ModuleStoreTestCase):
         self.instructor = InstructorFactory(course_key=self.course_key)
         for user in self.users:
             user.profile.meta = json.dumps({
-                "position": u"edX expert {}".format(user.id),
-                "company": u"Open edX Inc {}".format(user.id),
+                "position": f"edX expert {user.id}",
+                "company": f"Open edX Inc {user.id}",
             })
             user.profile.save()
         self.students_who_may_enroll = list(self.users) + [UserFactory() for _ in range(5)]
@@ -66,8 +55,8 @@ class TestAnalyticsBasic(ModuleStoreTestCase):
             )
 
     @ddt.data(
-        (u'あなた', u'スの中'),
-        (u"ГЂіи lіиэ ъэтшээи", u"Ђэаvэи аиↁ Ђэѓэ")
+        ('あなた', 'スの中'),
+        ("ГЂіи lіиэ ъэтшээи", "Ђэаvэи аиↁ Ђэѓэ")
     )
     @ddt.unpack
     def test_get_response_state_with_ora(self, files_descriptions, saved_response):
@@ -92,13 +81,13 @@ class TestAnalyticsBasic(ModuleStoreTestCase):
             relevant info (student.username and state).
             """
             result = Mock(spec=['student', 'state'])
-            result.student.username.return_value = u'user{}'.format(result_id)
-            result.state.return_value = u'state{}'.format(result_id)
+            result.student.username.return_value = f'user{result_id}'
+            result.state.return_value = f'state{result_id}'
             return result
 
         # Ensure that UsageKey.from_string returns a problem key that list_problem_responses can work with
         # (even when called with a dummy location):
-        mock_problem_key = Mock(return_value=u'')
+        mock_problem_key = Mock(return_value='')
         mock_problem_key.course_key = self.course_key
         with patch.object(UsageKey, 'from_string') as patched_from_string:
             patched_from_string.return_value = mock_problem_key
@@ -135,8 +124,8 @@ class TestAnalyticsBasic(ModuleStoreTestCase):
     def test_enrolled_students_features_keys(self):
         query_features = ('username', 'name', 'email', 'city', 'country',)
         for user in self.users:
-            user.profile.city = u"Mos Eisley {}".format(user.id)
-            user.profile.country = u"Tatooine {}".format(user.id)
+            user.profile.city = f"Mos Eisley {user.id}"
+            user.profile.country = f"Tatooine {user.id}"
             user.profile.save()
         for feature in query_features:
             assert feature in AVAILABLE_FEATURES
@@ -173,8 +162,8 @@ class TestAnalyticsBasic(ModuleStoreTestCase):
         assert len(userreports) == len(self.users)
         for userreport in userreports:
             assert set(userreport.keys()) == set(query_features)
-            assert userreport['meta.position'] in [u'edX expert {}'.format(user.id) for user in self.users]
-            assert userreport['meta.company'] in [u'Open edX Inc {}'.format(user.id) for user in self.users]
+            assert userreport['meta.position'] in [f"edX expert {user.id}" for user in self.users]
+            assert userreport['meta.company'] in [f"Open edX Inc {user.id}" for user in self.users]
 
     def test_enrolled_students_enrollment_verification(self):
         """
@@ -235,9 +224,31 @@ class TestAnalyticsBasic(ModuleStoreTestCase):
             else:
                 assert report['cohort'] == '[unassigned]'
 
+    def test_enrolled_student_features_external_user_keys(self):
+        query_features = ('username', 'name', 'email', 'city', 'country', 'external_user_key')
+        username_with_external_user_key_dict = {}
+        for i in range(len(self.users)):
+            # Setup some users with ProgramEnrollments
+            if i % 2 == 0:
+                user = self.users[i]
+                external_user_key = f'{user.username}_{i}'
+                ProgramEnrollmentFactory.create(user=user, external_user_key=external_user_key)
+                username_with_external_user_key_dict[user.username] = external_user_key
+
+        with self.assertNumQueries(2):
+            userreports = enrolled_students_features(self.course_key, query_features)
+        assert len(userreports) == 30
+        for report in userreports:
+            username = report['username']
+            external_key = username_with_external_user_key_dict.get(username)
+            if external_key:
+                assert external_key == report['external_user_key']
+            else:
+                assert '' == report['external_user_key']
+
     def test_available_features(self):
-        assert len(AVAILABLE_FEATURES) == len((STUDENT_FEATURES + PROFILE_FEATURES))
-        assert set(AVAILABLE_FEATURES) == set((STUDENT_FEATURES + PROFILE_FEATURES))
+        assert len(AVAILABLE_FEATURES) == len(STUDENT_FEATURES + PROFILE_FEATURES + PROGRAM_ENROLLMENT_FEATURES)
+        assert set(AVAILABLE_FEATURES) == set(STUDENT_FEATURES + PROFILE_FEATURES + PROGRAM_ENROLLMENT_FEATURES)
 
     def test_list_may_enroll(self):
         may_enroll = list_may_enroll(self.course_key, ['email'])

@@ -15,9 +15,8 @@
 
 import logging
 
-import six
 from django.conf import settings
-from django.http import Http404, HttpResponse  # lint-amnesty, pylint: disable=unused-import
+from django.http import HttpResponse  # lint-amnesty, pylint: disable=unused-import
 from django.template import engines
 from django.urls import reverse, NoReverseMatch
 from six.moves.urllib.parse import urljoin
@@ -26,7 +25,6 @@ from django.core.exceptions import ValidationError
 
 from edx_django_utils.monitoring import set_custom_attribute
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
-from openedx.core.djangoapps.theming.helpers import is_request_in_themed_site  # lint-amnesty, pylint: disable=unused-import
 from xmodule.util.xmodule_django import get_current_request_hostname
 
 from . import Engines
@@ -94,11 +92,11 @@ def marketing_link(name):
                 try:
                     return reverse(link_map[name])
                 except NoReverseMatch:
-                    log.debug(u"Cannot find corresponding link for name: %s", name)
+                    log.debug("Cannot find corresponding link for name: %s", name)
                     set_custom_attribute('unresolved_marketing_link', name)
                     return '#'
     else:
-        log.debug(u"Cannot find corresponding link for name: %s", name)
+        log.debug("Cannot find corresponding link for name: %s", name)
         return '#'
 
 
@@ -144,15 +142,12 @@ def marketing_link_context_processor(request):
         settings.MKTG_URLS
     )
 
-    return dict(  # lint-amnesty, pylint: disable=consider-using-dict-comprehension
-        [
-            ("MKTG_URL_" + k, marketing_link(k))
-            for k in (
-                six.viewkeys(settings.MKTG_URL_LINK_MAP) |
-                six.viewkeys(marketing_urls)
-            )
-        ]
-    )
+    return {
+        "MKTG_URL_" + k: marketing_link(k)
+        for k in (
+            settings.MKTG_URL_LINK_MAP.keys() | marketing_urls.keys()
+        )
+    }
 
 
 def render_to_string(template_name, dictionary, namespace='main', request=None):

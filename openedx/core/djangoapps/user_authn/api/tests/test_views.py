@@ -1,33 +1,39 @@
 """
 Logistration API View Tests
 """
+from unittest.mock import patch
+from urllib.parse import urlencode
+import socket
 import ddt
 from django.conf import settings
 from django.urls import reverse
-from mock import patch
 from rest_framework.test import APITestCase
-from six.moves.urllib.parse import urlencode
 
 from openedx.core.djangolib.testing.utils import skip_unless_lms
 from common.djangoapps.third_party_auth import pipeline
 from common.djangoapps.third_party_auth.tests.testutil import ThirdPartyAuthTestMixin, simulate_running_pipeline
+from openedx.core.djangoapps.geoinfo.api import country_code_from_ip
 
 
 @skip_unless_lms
 @ddt.ddt
-class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
+class MFEContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
     """
-    Third party auth context tests
+    MFE context tests
     """
 
     def setUp(self):  # pylint: disable=arguments-differ
         """
         Test Setup
         """
-        super(TPAContextViewTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
-        self.url = reverse('third_party_auth_context')
-        self.query_params = {'redirect_to': '/dashboard'}
+        self.url = reverse('mfe_context')
+        self.query_params = {'next': '/dashboard'}
+
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        self.country_code = country_code_from_ip(ip_address)
 
         # Several third party auth providers are created for these tests:
         self.configure_google_provider(enabled=True, visible=True)
@@ -42,7 +48,7 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
         """
         Construct the login URL to start third party authentication
         """
-        return u'{url}?auth_entry={auth_entry}&{param_str}'.format(
+        return '{url}?auth_entry={auth_entry}&{param_str}'.format(
             url=reverse('social:begin', kwargs={'backend': backend_name}),
             auth_entry=auth_entry,
             param_str=urlencode(params)
@@ -58,6 +64,7 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
                 'name': 'Facebook',
                 'iconClass': 'fa-facebook',
                 'iconImage': None,
+                'skipHintedLogin': False,
                 'loginUrl': self._third_party_login_url('facebook', 'login', params),
                 'registerUrl': self._third_party_login_url('facebook', 'register', params)
             },
@@ -66,6 +73,7 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
                 'name': 'Google',
                 'iconClass': 'fa-google-plus',
                 'iconImage': None,
+                'skipHintedLogin': False,
                 'loginUrl': self._third_party_login_url('google-oauth2', 'login', params),
                 'registerUrl': self._third_party_login_url('google-oauth2', 'register', params)
             },
@@ -73,7 +81,7 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
 
     def get_context(self, params=None, current_provider=None, backend_name=None, add_user_details=False):
         """
-        Returns the third party auth context
+        Returns the MFE context
         """
         return {
             'currentProvider': current_provider,
@@ -84,17 +92,9 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
             'errorMessage': None,
             'registerFormSubmitButtonText': 'Create Account',
             'syncLearnerProfileData': False,
-            'pipeline_user_details': {'email': 'test@test.com'} if add_user_details else {}
+            'pipeline_user_details': {'email': 'test@test.com'} if add_user_details else {},
+            'countryCode': self.country_code
         }
-
-    def test_missing_arguments(self):
-        """
-        Test that if required arguments are missing, proper status code and message
-        is returned.
-        """
-        response = self.client.get(self.url)
-        assert response.status_code == 400
-        assert response.data == {'message': 'Request missing required parameter: redirect_to'}
 
     @patch.dict(settings.FEATURES, {'ENABLE_THIRD_PARTY_AUTH': False})
     def test_no_third_party_auth_providers(self):
@@ -112,7 +112,7 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
         """
         response = self.client.get(self.url, self.query_params)
         params = {
-            'next': self.query_params['redirect_to']
+            'next': self.query_params['next']
         }
 
         assert response.status_code == 200
@@ -131,7 +131,7 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
         """
         email = 'test@test.com' if add_user_details else None
         params = {
-            'next': self.query_params['redirect_to']
+            'next': self.query_params['next']
         }
 
         # Simulate a running pipeline
@@ -148,7 +148,7 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
         even if it is not visible on the login page
         """
         params = {
-            'next': self.query_params['redirect_to']
+            'next': self.query_params['next']
         }
         tpa_hint = self.hidden_enabled_provider.provider_id
         self.query_params.update({'tpa_hint': tpa_hint})
@@ -159,9 +159,19 @@ class TPAContextViewTest(ThirdPartyAuthTestMixin, APITestCase):
             'name': 'LinkedIn',
             'iconClass': 'fa-linkedin',
             'iconImage': None,
+            'skipHintedLogin': False,
             'loginUrl': self._third_party_login_url('linkedin-oauth2', 'login', params),
             'registerUrl': self._third_party_login_url('linkedin-oauth2', 'register', params)
         })
 
         response = self.client.get(self.url, self.query_params)
         assert response.data['providers'] == provider_data
+
+    def test_user_country_code(self):
+        """
+        Test api that returns country code of user
+        """
+        response = self.client.get(self.url, self.query_params)
+
+        assert response.status_code == 200
+        assert response.data['countryCode'] == self.country_code

@@ -4,14 +4,17 @@ Tests for Outline Tab API in the Course Home API
 
 import itertools
 from datetime import datetime
+from unittest.mock import Mock, patch
 
 import ddt
-from edx_toggles.toggles.testutils import override_waffle_flag
 from django.conf import settings
 from django.urls import reverse
-from mock import Mock, patch
+from edx_toggles.toggles.testutils import override_waffle_flag
 
 from common.djangoapps.course_modes.models import CourseMode
+from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.roles import CourseInstructorRole
+from common.djangoapps.student.tests.factories import UserFactory
 from lms.djangoapps.course_home_api.tests.utils import BaseCourseHomeTests
 from lms.djangoapps.course_home_api.toggles import COURSE_HOME_MICROFRONTEND, COURSE_HOME_MICROFRONTEND_OUTLINE_TAB
 from lms.djangoapps.experiments.testutils import override_experiment_waffle_flag
@@ -20,11 +23,11 @@ from openedx.core.djangoapps.user_api.preferences.api import set_user_preference
 from openedx.core.djangoapps.user_api.tests.factories import UserCourseTagFactory
 from openedx.features.course_duration_limits.models import CourseDurationLimitConfig
 from openedx.features.course_experience import (
-    COURSE_ENABLE_UNENROLLED_ACCESS_FLAG, DISPLAY_COURSE_SOCK_FLAG, ENABLE_COURSE_GOALS,
+    COURSE_ENABLE_UNENROLLED_ACCESS_FLAG,
+    DISPLAY_COURSE_SOCK_FLAG,
+    ENABLE_COURSE_GOALS
 )
 from openedx.features.discounts.applicability import DISCOUNT_APPLICABILITY_FLAG
-from common.djangoapps.student.models import CourseEnrollment
-from common.djangoapps.student.tests.factories import UserFactory
 from xmodule.course_module import COURSE_VISIBILITY_PUBLIC, COURSE_VISIBILITY_PUBLIC_OUTLINE
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 
@@ -65,8 +68,8 @@ class OutlineTabTestViews(BaseCourseHomeTests):
         dates_widget = response.data.get('dates_widget')
         assert dates_widget
         date_blocks = dates_widget.get('course_date_blocks')
-        assert all(((block.get('title') != '') for block in date_blocks))
-        assert all((block.get('date') for block in date_blocks))
+        assert all((block.get('title') != '') for block in date_blocks)
+        assert all(block.get('date') for block in date_blocks)
 
         resume_course = response.data.get('resume_course')
         resume_course_url = resume_course.get('url')
@@ -75,7 +78,12 @@ class OutlineTabTestViews(BaseCourseHomeTests):
 
     @override_experiment_waffle_flag(COURSE_HOME_MICROFRONTEND, active=True)
     @override_waffle_flag(COURSE_HOME_MICROFRONTEND_OUTLINE_TAB, active=True)
-    def test_get_authenticated_user_not_enrolled(self):
+    @ddt.data(True, False)
+    def test_get_authenticated_user_not_enrolled(self, has_previously_enrolled):
+        if has_previously_enrolled:
+            # Create an enrollment, then unenroll to set is_active to False
+            CourseEnrollment.enroll(self.user, self.course.id)
+            CourseEnrollment.unenroll(self.user, self.course.id)
         response = self.client.get(self.url)
         assert response.status_code == 200
 
@@ -88,8 +96,8 @@ class OutlineTabTestViews(BaseCourseHomeTests):
         dates_widget = response.data.get('dates_widget')
         assert dates_widget
         date_blocks = dates_widget.get('course_date_blocks')
-        assert all(((block.get('title') != '') for block in date_blocks))
-        assert all((block.get('date') for block in date_blocks))
+        assert all((block.get('title') != '') for block in date_blocks)
+        assert all(block.get('date') for block in date_blocks)
 
     @override_experiment_waffle_flag(COURSE_HOME_MICROFRONTEND, active=True)
     @override_waffle_flag(COURSE_HOME_MICROFRONTEND_OUTLINE_TAB, active=True)
@@ -124,6 +132,29 @@ class OutlineTabTestViews(BaseCourseHomeTests):
         # Now switch users and confirm we get a different result
         self.update_masquerade(username=user.username)
         assert self.client.get(self.url).data['dates_widget']['user_timezone'] == 'Asia/Tokyo'
+
+    @override_experiment_waffle_flag(COURSE_HOME_MICROFRONTEND, active=True)
+    @override_waffle_flag(COURSE_HOME_MICROFRONTEND_OUTLINE_TAB, active=True)
+    def test_course_staff_can_see_non_user_specific_content_in_masquerade(self):
+        """
+        Test that course staff can see the outline and other non-user-specific content when masquerading as a learner
+        """
+        self.store.create_item(
+            self.user.id, self.course.id, 'course_info', 'handouts', fields={'data': '<p>Handouts</p>'}
+        )
+
+        instructor = UserFactory(
+            username='instructor',
+            email='instructor@example.com',
+            password='foo',
+            is_staff=False
+        )
+        CourseInstructorRole(self.course.id).add_users(instructor)
+        self.client.login(username=instructor, password='foo')
+        self.update_masquerade(role="student")
+        response = self.client.get(self.url)
+        assert response.data['course_blocks'] is not None
+        assert response.data['handouts_html'] is not None
 
     @override_experiment_waffle_flag(COURSE_HOME_MICROFRONTEND, active=True)
     @override_waffle_flag(COURSE_HOME_MICROFRONTEND_OUTLINE_TAB, active=True)
@@ -278,17 +309,11 @@ class OutlineTabTestViews(BaseCourseHomeTests):
             chapter = ItemFactory.create(category='chapter', parent_location=course.location)
             sequential = ItemFactory.create(display_name='Test', category='sequential', graded=True, has_score=True,
                                             parent_location=chapter.location)
-            problem1 = ItemFactory.create(category='problem', graded=True, has_score=True,
-                                          parent_location=sequential.location)
-            problem2 = ItemFactory.create(category='problem', graded=True, has_score=True,
-                                          parent_location=sequential.location)
+            ItemFactory.create(category='problem', graded=True, has_score=True, parent_location=sequential.location)
+            ItemFactory.create(category='problem', graded=True, has_score=True, parent_location=sequential.location)
             sequential2 = ItemFactory.create(display_name='Ungraded', category='sequential',
                                              parent_location=chapter.location)
-            problem3 = ItemFactory.create(category='problem', parent_location=sequential2.location)
-        course.children = [chapter]
-        chapter.children = [sequential, sequential2]
-        sequential.children = [problem1, problem2]
-        sequential2.children = [problem3]
+            ItemFactory.create(category='problem', parent_location=sequential2.location)
         url = reverse('course-home-outline-tab', args=[course.id])
 
         CourseEnrollment.enroll(self.user, course.id)

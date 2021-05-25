@@ -38,11 +38,11 @@ class Schedule(TimeStampedModel):
 
     def get_experience_type(self):
         try:
-            return self.experience.experience_type
+            return self.experience.experience_type  # lint-amnesty, pylint: disable=no-member
         except ScheduleExperience.DoesNotExist:
             return ScheduleExperience.EXPERIENCES.default
 
-    class Meta(object):
+    class Meta:
         verbose_name = _('Schedule')
         verbose_name_plural = _('Schedules')
 
@@ -54,14 +54,12 @@ class ScheduleConfig(ConfigurationModel):
     KEY_FIELDS = ('site',)
 
     site = models.ForeignKey(Site, on_delete=models.CASCADE)
-    create_schedules = models.BooleanField(default=False)
     enqueue_recurring_nudge = models.BooleanField(default=False)
     deliver_recurring_nudge = models.BooleanField(default=False)
     enqueue_upgrade_reminder = models.BooleanField(default=False)
     deliver_upgrade_reminder = models.BooleanField(default=False)
     enqueue_course_update = models.BooleanField(default=False)
     deliver_course_update = models.BooleanField(default=False)
-    hold_back_ratio = models.FloatField(default=0)
 
 
 class ScheduleExperience(models.Model):
@@ -69,8 +67,8 @@ class ScheduleExperience(models.Model):
     .. no_pii:
     """
     EXPERIENCES = Choices(
-        (0, 'default', u'Recurring Nudge and Upgrade Reminder'),
-        (1, 'course_updates', u'Course Updates')
+        (0, 'default', 'Recurring Nudge and Upgrade Reminder'),
+        (1, 'course_updates', 'Course Updates')
     )
 
     schedule = models.OneToOneField(Schedule, related_name='experience', on_delete=models.CASCADE)

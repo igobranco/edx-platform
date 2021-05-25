@@ -1,16 +1,18 @@
-# -*- coding: utf-8 -*-
 """
 Tests for util.date_utils
 """
 
-
 import unittest
 from datetime import datetime, timedelta, tzinfo
-import pytest
+from unittest.mock import patch
+
+import crum
 import ddt
+import pytest
 from markupsafe import Markup
-from mock import patch
 from pytz import utc
+
+from django.test.client import RequestFactory
 
 from common.djangoapps.util.date_utils import (
     almost_same_datetime, get_default_time_display, get_time_display, strftime_localized, strftime_localized_html
@@ -127,7 +129,7 @@ class StrftimeLocalizedTest(unittest.TestCase):
         ("%Y", "2013"),
         ("%m/%d/%y", "02/14/13"),
         ("hello", "hello"),
-        (u'%Y년 %m월 %d일', u"2013년 02월 14일"),
+        ('%Y년 %m월 %d일', "2013년 02월 14일"),
         ("%a, %b %d, %Y", "Thu, Feb 14, 2013"),
         ("%I:%M:%S %p", "04:41:17 PM"),
         ("%A at %-I%P", "Thursday at 4pm"),
@@ -218,6 +220,12 @@ class StrftimeLocalizedHtmlTest(unittest.TestCase):
     """
     Tests for strftime_localized_html.
     """
+    def setUp(self):
+        super().setUp()
+        request = RequestFactory().request()
+        self.addCleanup(crum.set_current_request, None)
+        crum.set_current_request(request)
+
     @ddt.data(
         None,
         'Africa/Casablanca',

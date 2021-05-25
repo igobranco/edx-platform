@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 Test the Blockstore-based XBlock runtime and content libraries together.
 """
 import json
+from gettext import GNUTranslations
 
 from completion.test_utils import CompletionWaffleTestMixin
 from django.db import connections
@@ -29,13 +29,13 @@ from common.djangoapps.student.tests.factories import UserFactory
 from xmodule.unit_block import UnitBlock
 
 
-class ContentLibraryContentTestMixin(object):
+class ContentLibraryContentTestMixin:
     """
     Mixin for content library tests that creates two students and a library.
     """
     @classmethod
     def setUpClass(cls):
-        super(ContentLibraryContentTestMixin, cls).setUpClass()
+        super().setUpClass()
         # Create a couple students that the tests can use
         cls.student_a = UserFactory.create(username="Alice", email="alice@example.com", password="edx")
         cls.student_b = UserFactory.create(username="Bob", email="bob@example.com", password="edx")
@@ -101,6 +101,13 @@ class ContentLibraryRuntimeTest(ContentLibraryContentTestMixin, TestCase):
         unit_block2 = xblock_api.load_block(unit_block2_key, self.student_a)
         assert library_api.get_library_block_olx(unit_block_key) == library_api.get_library_block_olx(unit_block2_key)
         assert unit_block.children != unit_block2.children
+
+    def test_dndv2_sets_translator(self):
+        dnd_block_key = library_api.create_library_block(self.library.key, "drag-and-drop-v2", "dnd1").usage_key
+        library_api.publish_changes(self.library.key)
+        dnd_block = xblock_api.load_block(dnd_block_key, self.student_a)
+        i18n_service = dnd_block.runtime.service(dnd_block, 'i18n')
+        assert isinstance(i18n_service.translator, GNUTranslations)
 
     def test_has_score(self):
         """
@@ -398,7 +405,7 @@ class ContentLibraryXBlockUserStateTest(ContentLibraryContentTestMixin, TestCase
         client = APIClient()
         client.login(username=self.student_a.username, password='edx')
         student_view_result = client.get(URL_BLOCK_RENDER_VIEW.format(block_key=block_id, view_name='student_view'))
-        problem_key = "input_{}_2_1".format(block_id)
+        problem_key = f"input_{block_id}_2_1"
         assert problem_key in student_view_result.data['content']
 
         # And submit a wrong answer:
@@ -488,7 +495,7 @@ class ContentLibraryXBlockCompletionTest(ContentLibraryContentTestMixin, Complet
     """
 
     def setUp(self):
-        super(ContentLibraryXBlockCompletionTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         # Enable the completion waffle flag for these tests
         self.override_waffle_switch(True)
 

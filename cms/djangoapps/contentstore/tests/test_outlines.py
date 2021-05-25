@@ -6,17 +6,13 @@ from datetime import datetime, timezone
 
 from opaque_keys.edx.keys import CourseKey
 
-from openedx.core.djangoapps.content.learning_sequences.data import (
-    CourseOutlineData,
-    ExamData,
-    VisibilityData,
-)
 from openedx.core.djangoapps.content.learning_sequences.api import get_course_outline
+from openedx.core.djangoapps.content.learning_sequences.data import CourseOutlineData, ExamData, VisibilityData
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 
-from ..outlines import CourseStructureError, get_outline_from_modulestore
+from ..outlines import get_outline_from_modulestore
 
 
 class OutlineFromModuleStoreTestCase(ModuleStoreTestCase):
@@ -62,7 +58,7 @@ class OutlineFromModuleStoreTestCase(ModuleStoreTestCase):
         # published branch to make sure we have the right data.
         with self.store.branch_setting(ModuleStoreEnum.Branch.published_only, self.course_key):
             published_course = self.store.get_course(self.course_key, depth=2)
-        outline = get_outline_from_modulestore(self.course_key)
+        outline, _errs = get_outline_from_modulestore(self.course_key)
 
         # Check basic metdata...
         assert outline.title == "OutlineFromModuleStoreTestCase Course"
@@ -156,7 +152,7 @@ class OutlineFromModuleStoreTestCase(ModuleStoreTestCase):
                     display_name=f"Seq_1_{i}",
                 )
 
-        outline = get_outline_from_modulestore(self.course_key)
+        outline, _errs = get_outline_from_modulestore(self.course_key)
 
         assert len(outline.sections) == 2
         assert len(outline.sections[0].sequences) == 3
@@ -175,19 +171,58 @@ class OutlineFromModuleStoreTestCase(ModuleStoreTestCase):
         """
         # Course -> Section -> Unit (No Sequence)
         with self.store.bulk_operations(self.course_key):
-            section = ItemFactory.create(
+            section_1 = ItemFactory.create(
                 parent_location=self.draft_course.location,
                 category='chapter',
                 display_name="Section",
             )
+            # This Unit should be skipped
             ItemFactory.create(
-                parent_location=section.location,
+                parent_location=section_1.location,
                 category='vertical',
-                display_name="Unit"
+                display_name="u1"
+            )
+            ItemFactory.create(
+                parent_location=section_1.location,
+                category='sequential',
+                display_name="standard_seq"
+            )
+            ItemFactory.create(
+                parent_location=section_1.location,
+                category='problemset',
+                display_name="pset_seq"
+            )
+            ItemFactory.create(
+                parent_location=section_1.location,
+                category='videosequence',
+                display_name="video_seq"
             )
 
-        with self.assertRaises(CourseStructureError):
-            get_outline_from_modulestore(self.course_key)
+            # This should work fine
+            section_2 = ItemFactory.create(
+                parent_location=self.draft_course.location,
+                category='chapter',
+                display_name="Section 2",
+            )
+
+            # Second error message here
+            ItemFactory.create(
+                parent_location=section_2.location,
+                category='vertical',
+                display_name="u2"
+            )
+
+        outline, errs = get_outline_from_modulestore(self.course_key)
+        assert len(outline.sections) == 2
+        assert len(outline.sections[0].sequences) == 3
+        assert len(outline.sections[1].sequences) == 0
+        assert len(outline.sequences) == 3
+
+        # Version-less usage keys
+        unit_1_loc = self.course_key.make_usage_key('vertical', 'u1')
+        unit_2_loc = self.course_key.make_usage_key('vertical', 'u2')
+        assert errs[0].usage_key == unit_1_loc
+        assert errs[1].usage_key == unit_2_loc
 
     def test_sequence_without_section(self):
         """
@@ -210,8 +245,182 @@ class OutlineFromModuleStoreTestCase(ModuleStoreTestCase):
                 display_name="Unit",
             )
 
-        with self.assertRaises(CourseStructureError):
-            get_outline_from_modulestore(self.course_key)
+        outline, errs = get_outline_from_modulestore(self.course_key)
+        assert len(errs) == 1
+
+        # Strip version information from seq.location before comparison.
+        assert errs[0].usage_key == seq.location.map_into_course(self.course_key)
+        assert outline.sections == []
+        assert outline.sequences == {}
+
+    def test_missing_display_names(self):
+        """
+        When display_names are empty, it should fallback on url_names.
+        """
+        with self.store.bulk_operations(self.course_key):
+            section = ItemFactory.create(
+                parent_location=self.draft_course.location,
+                category='chapter',
+                display_name=None,
+            )
+            sequence = ItemFactory.create(
+                parent_location=section.location,
+                category='sequential',
+                display_name=None,
+            )
+
+        outline, _errs = get_outline_from_modulestore(self.course_key)
+        assert outline.sections[0].title == section.url_name
+        assert outline.sections[0].sequences[0].title == sequence.url_name
+
+    def test_empty_user_partition_groups(self):
+        """
+        Ignore user partition setting if no groups are associated.
+
+        If we didn't ignore it, we would be creating content that can never be
+        seen by any student.
+        """
+        with self.store.bulk_operations(self.course_key):
+            section = ItemFactory.create(
+                parent_location=self.draft_course.location,
+                category='chapter',
+                display_name='Ch 1',
+                group_access={
+                    49: [],
+                    50: [1, 2],
+                    51: [],
+                }
+            )
+            ItemFactory.create(
+                parent_location=section.location,
+                category='sequential',
+                display_name='Seq 1',
+                group_access={
+                    49: [],
+                }
+            )
+
+        outline, errs = get_outline_from_modulestore(self.course_key)
+        assert len(outline.sections) == 1
+        assert len(outline.sequences) == 1
+        assert outline.sections[0].user_partition_groups == {50: [1, 2]}
+        assert outline.sections[0].sequences[0].user_partition_groups == {}
+        assert len(errs) == 2
+
+    def test_bubbled_up_user_partition_groups_no_children(self):
+        """Testing empty case to make sure bubble-up code doesn't break."""
+        with self.store.bulk_operations(self.course_key):
+            section = ItemFactory.create(
+                parent_location=self.draft_course.location,
+                category='chapter',
+                display_name='Ch 0',
+            )
+
+            # Bubble up with no children (nothing happens)
+            ItemFactory.create(
+                parent_location=section.location,
+                category='sequential',
+                display_name='Seq 0',
+                group_access={}
+            )
+
+        outline, _errs = get_outline_from_modulestore(self.course_key)
+        seq_data = outline.sections[0].sequences[0]
+        assert seq_data.user_partition_groups == {}
+
+    def test_bubbled_up_user_partition_groups_one_child(self):
+        """Group settings should bubble up from Unit to Seq. if only one unit"""
+        with self.store.bulk_operations(self.course_key):
+            section = ItemFactory.create(
+                parent_location=self.draft_course.location,
+                category='chapter',
+                display_name='Ch 0',
+            )
+
+            # Bubble up with 1 child (grabs the setting from child)
+            seq_1 = ItemFactory.create(
+                parent_location=section.location,
+                category='sequential',
+                display_name='Seq 1',
+                group_access={}
+            )
+            ItemFactory.create(
+                parent_location=seq_1.location,
+                category='vertical',
+                display_name='Single Vertical',
+                group_access={
+                    50: [1, 2],
+                    51: [],  # Empty group shouldn't bubble up.
+                },
+            )
+
+        outline, errs = get_outline_from_modulestore(self.course_key)
+        seq_data = outline.sections[0].sequences[0]
+        assert seq_data.user_partition_groups == {50: [1, 2]}
+        assert len(errs) == 1
+
+    def test_bubbled_up_user_partition_groups_multiple_children(self):
+        """If all Units have the same group_access, bubble up to Sequence."""
+        with self.store.bulk_operations(self.course_key):
+            section = ItemFactory.create(
+                parent_location=self.draft_course.location,
+                category='chapter',
+                display_name='Ch 0',
+            )
+
+            # Bubble up with n children, all matching for one group
+            seq_n = ItemFactory.create(
+                parent_location=section.location,
+                category='sequential',
+                display_name='Seq N',
+                group_access={}
+            )
+            for i in range(4):
+                ItemFactory.create(
+                    parent_location=seq_n.location,
+                    category='vertical',
+                    display_name=f'vertical {i}',
+                    group_access={50: [3, 4], 51: [i]}  # Only 50 should get bubbled up
+                )
+            ItemFactory.create(
+                parent_location=seq_n.location,
+                category='vertical',
+                display_name='vertical 5',
+                group_access={50: [4, 3], 51: [5]}  # Ordering should be normalized
+            )
+
+        outline, errs = get_outline_from_modulestore(self.course_key)
+        seq_data = outline.sections[0].sequences[0]
+        assert seq_data.user_partition_groups == {50: [3, 4]}
+        assert len(errs) == 1
+
+    def test_not_bubbled_up(self):
+        """Don't bubble up from Unit if Seq has a conflicting group_access."""
+        with self.store.bulk_operations(self.course_key):
+            section = ItemFactory.create(
+                parent_location=self.draft_course.location,
+                category='chapter',
+                display_name='Ch 0',
+            )
+
+            # Bubble up with 1 child (grabs the setting from child)
+            seq_1 = ItemFactory.create(
+                parent_location=section.location,
+                category='sequential',
+                display_name='Seq 1',
+                group_access={50: [3, 4]}
+            )
+            ItemFactory.create(
+                parent_location=seq_1.location,
+                category='vertical',
+                display_name='Single Vertical',
+                group_access={50: [1, 2]},
+            )
+
+        outline, errs = get_outline_from_modulestore(self.course_key)
+        seq_data = outline.sections[0].sequences[0]
+        assert seq_data.user_partition_groups == {50: [3, 4]}  # Kept the seq settings
+        assert len(errs) == 1
 
     def _outline_seq_data(self, modulestore_seq):
         """
@@ -222,7 +431,7 @@ class OutlineFromModuleStoreTestCase(ModuleStoreTestCase):
         published set of blocks will have version information when they're
         published, but learning_sequences ignores all of that).
         """
-        outline = get_outline_from_modulestore(self.course_key)
+        outline, _errs = get_outline_from_modulestore(self.course_key)
 
         # Recently modified content can have full version information on their
         # CourseKeys. We need to strip that out and have versionless-CourseKeys

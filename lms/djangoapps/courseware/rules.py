@@ -8,7 +8,6 @@ import traceback
 
 import laboratory
 import rules
-import six
 from bridgekeeper.rules import EMPTY, Rule
 from django.conf import settings
 from django.db.models import Q
@@ -20,7 +19,7 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 from openedx.core.djangoapps.enrollments.api import is_enrollment_valid_for_proctoring
 from common.djangoapps.student.models import CourseAccessRole
 from common.djangoapps.student.roles import CourseRole, OrgRole
-from xmodule.course_module import CourseDescriptor
+from xmodule.course_module import CourseBlock
 from xmodule.error_module import ErrorBlock
 from xmodule.x_module import XModule
 
@@ -71,7 +70,7 @@ class StaffAccessExperiment(laboratory.Experiment):  # lint-amnesty, pylint: dis
         if not result.match:
 
             LOG.warning(
-                u"StaffAccessExperiment: control=%r, candidate=%r\n%s",
+                "StaffAccessExperiment: control=%r, candidate=%r\n%s",
                 result.control,
                 result.candidates[0],
                 "".join(traceback.format_stack(limit=10))
@@ -105,7 +104,7 @@ class HasStaffAccessToContent(Rule):
         """
         # delegate the work to type-specific functions.
         # (start with more specific types, then get more general)
-        if isinstance(instance, (CourseDescriptor, CourseOverview)):
+        if isinstance(instance, (CourseBlock, CourseOverview)):
             course_key = instance.id
         elif isinstance(instance, (ErrorBlock, XModule, XBlock)):
             course_key = instance.scope_ids.usage_id.course_key
@@ -113,7 +112,7 @@ class HasStaffAccessToContent(Rule):
             course_key = instance
         elif isinstance(instance, UsageKey):
             course_key = instance.course_key
-        elif isinstance(instance, six.string_types):
+        elif isinstance(instance, str):
             course_key = CourseKey.from_string(instance)
 
         return self.filter(user, CourseOverview.objects.filter(id=course_key)).exists()
@@ -163,7 +162,7 @@ class HasRolesRule(Rule):  # lint-amnesty, pylint: disable=abstract-method, miss
             return False
         if isinstance(instance, CourseKey):
             course_key = instance
-        elif isinstance(instance, (CourseDescriptor, CourseOverview)):
+        elif isinstance(instance, (CourseBlock, CourseOverview)):
             course_key = instance.id
         elif isinstance(instance, (ErrorBlock, XModule, XBlock)):
             course_key = instance.scope_ids.usage_id.course_key

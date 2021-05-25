@@ -67,7 +67,9 @@ pre-requirements: ## install Python requirements for running pip-tools
 	pip install -qr requirements/edx/pip-tools.txt
 
 requirements: pre-requirements ## install development environment requirements
-	pip-sync -q requirements/edx/development.txt requirements/edx/private.*
+	# The "$(wildcard..)" is to include private.txt if it exists, and make no mention
+	# of it if it does not.  Shell wildcarding can't do that with default options.
+	pip-sync -q requirements/edx/development.txt $(wildcard requirements/edx/private.txt)
 
 shell: ## launch a bash shell in a Docker container with all edx-platform dependencies installed
 	docker run -it -e "NO_PYTHON_UNINSTALL=1" -e "PIP_INDEX_URL=https://pypi.python.org/simple" -e TERM \
@@ -113,12 +115,10 @@ upgrade: pre-requirements ## update the pip requirements files to use the latest
 docker_build:
 	docker build . -f Dockerfile --target lms -t openedx/edx-platform
 	docker build . -f Dockerfile --target lms-newrelic -t openedx/edx-platform:latest-newrelic
-	docker build . -f Dockerfile --target lms-devstack -t openedx/edx-platform:latest-devstack
 
 docker_tag: docker_build
 	docker tag openedx/edx-platform openedx/edx-platform:${GITHUB_SHA}
 	docker tag openedx/edx-platform:latest-newrelic openedx/edx-platform:${GITHUB_SHA}-newrelic
-	docker tag openedx/edx-platform:latest-devstack openedx/edx-platform:${GITHUB_SHA}-devstack
 
 docker_auth:
 	echo "$$DOCKERHUB_PASSWORD" | docker login -u "$$DOCKERHUB_USERNAME" --password-stdin
@@ -128,6 +128,3 @@ docker_push: docker_tag docker_auth ## push to docker hub
 	docker push "openedx/edx-platform:${GITHUB_SHA}"
 	docker push 'openedx/edx-platform:latest-newrelic'
 	docker push "openedx/edx-platform:${GITHUB_SHA}-newrelic"
-	docker push 'openedx/edx-platform:latest-devstack'
-	docker push "openedx/edx-platform:${GITHUB_SHA}-devstack"
-

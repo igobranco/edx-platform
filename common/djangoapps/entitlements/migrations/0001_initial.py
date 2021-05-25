@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-  # lint-amnesty, pylint: disable=django-not-configured, missing-module-docstring
-
-
 import uuid
 
 import django.utils.timezone
@@ -12,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):  # lint-amnesty, pylint: disable=missing-class-docstring
 
     dependencies = [
-        ('student', '0013_delete_historical_enrollment_records'),
+        ('student', '0001_squashed_0031_auto_20200317_1122'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -26,7 +23,7 @@ class Migration(migrations.Migration):  # lint-amnesty, pylint: disable=missing-
                 ('uuid', models.UUIDField(default=uuid.uuid4, editable=False)),
                 ('course_uuid', models.UUIDField()),
                 ('expired_at', models.DateTimeField(null=True)),
-                ('mode', models.CharField(default=u'audit', max_length=100)),
+                ('mode', models.CharField(default='audit', max_length=100)),
                 ('order_number', models.CharField(max_length=128, null=True)),
                 ('enrollment_course_run', models.ForeignKey(to='student.CourseEnrollment', null=True, on_delete=models.CASCADE)),  # lint-amnesty, pylint: disable=line-too-long
                 ('user', models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.CASCADE)),

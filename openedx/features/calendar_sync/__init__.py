@@ -1,4 +1,4 @@
-"""  # lint-amnesty, pylint: disable=django-not-configured
+"""
 Calendar syncing Course dates with a User.
 """
 default_app_config = 'openedx.features.calendar_sync.apps.UserCalendarSyncConfig'
@@ -16,4 +16,4 @@ def get_calendar_event_id(user, block_key, date_type, hostname):
     Returns:
         event id (str)
     """
-    return '{}.{}.{}@{}'.format(user.id, block_key, date_type, hostname)
+    return f'{user.id}.{block_key}.{date_type}@{hostname}'

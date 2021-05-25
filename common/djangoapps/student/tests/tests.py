@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Miscellaneous tests for the student app.
 """
@@ -7,6 +6,7 @@ Miscellaneous tests for the student app.
 import logging
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import Mock, patch
 from urllib.parse import quote
 
 import ddt
@@ -18,13 +18,26 @@ from django.test import TestCase, override_settings
 from django.test.client import Client
 from django.urls import reverse
 from markupsafe import escape
-from mock import Mock, patch
 from opaque_keys.edx.keys import CourseKey
 from opaque_keys.edx.locations import CourseLocator
 from pyquery import PyQuery as pq
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.course_modes.tests.factories import CourseModeFactory
+from common.djangoapps.student.helpers import _cert_info, process_survey_link
+from common.djangoapps.student.models import (
+    AnonymousUserId,
+    CourseEnrollment,
+    LinkedInAddToProfileConfiguration,
+    UserAttribute,
+    anonymous_id_for_user,
+    unique_id_for_user,
+    user_by_anonymous_id
+)
+from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
+from common.djangoapps.student.views import complete_course_mode_info
+from common.djangoapps.util.model_utils import USER_SETTINGS_CHANGED_EVENT_NAME
+from common.djangoapps.util.testing import EventTestMixin
 from lms.djangoapps.certificates.models import CertificateStatuses
 from lms.djangoapps.certificates.tests.factories import GeneratedCertificateFactory
 from lms.djangoapps.verify_student.tests import TestVerificationBase
@@ -34,20 +47,6 @@ from openedx.core.djangoapps.content.course_overviews.tests.factories import Cou
 from openedx.core.djangoapps.programs.tests.mixins import ProgramsApiConfigMixin
 from openedx.core.djangoapps.site_configuration.tests.mixins import SiteMixin
 from openedx.core.djangolib.testing.utils import CacheIsolationTestCase, skip_unless_lms
-from common.djangoapps.student.helpers import _cert_info, process_survey_link
-from common.djangoapps.student.models import (
-    CourseEnrollment,
-    LinkedInAddToProfileConfiguration,
-    UserAttribute,
-    AnonymousUserId,
-    anonymous_id_for_user,
-    unique_id_for_user,
-    user_by_anonymous_id
-)
-from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
-from common.djangoapps.student.views import complete_course_mode_info
-from common.djangoapps.util.model_utils import USER_SETTINGS_CHANGED_EVENT_NAME
-from common.djangoapps.util.testing import EventTestMixin
 from xmodule.modulestore.tests.django_utils import ModuleStoreEnum, ModuleStoreTestCase, SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, check_mongo_calls
 
@@ -67,7 +66,7 @@ class CourseEndingTest(ModuleStoreTestCase):
         assert process_survey_link(link1, user) == link1
 
         link2 = "http://www.mysurvey.com?unique={UNIQUE_ID}"
-        link2_expected = "http://www.mysurvey.com?unique={UNIQUE_ID}".format(UNIQUE_ID=user_id)
+        link2_expected = f"http://www.mysurvey.com?unique={user_id}"
         assert process_survey_link(link2, user) == link2_expected
 
     @patch.dict('django.conf.settings.FEATURES', {'CERTIFICATES_HTML_VIEW': False})
@@ -217,7 +216,7 @@ class DashboardTest(ModuleStoreTestCase, TestVerificationBase):
     ENABLED_SIGNALS = ['course_published']
 
     def setUp(self):
-        super(DashboardTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = CourseFactory.create()
         self.user = UserFactory.create(username="jack", email="jack@fake.edx.org", password='test')
         self.client = Client()
@@ -240,7 +239,7 @@ class DashboardTest(ModuleStoreTestCase, TestVerificationBase):
         if mode in ['professional', 'no-id-professional']:
             self.assertContains(response, 'class="course professional"')
         else:
-            self.assertContains(response, 'class="course {0}"'.format(mode))
+            self.assertContains(response, f'class="course {mode}"')
         self.assertContains(response, value)
 
     @patch.dict("django.conf.settings.FEATURES", {'ENABLE_VERIFIED_CERTIFICATES': True})
@@ -277,7 +276,7 @@ class DashboardTest(ModuleStoreTestCase, TestVerificationBase):
             # Audit mode does not have a banner.  Assert no banner element.
             assert pq(response.content)('.sts-enrollment').length == 0
         else:
-            self.assertNotContains(response, "class=\"course {0}\"".format(mode))
+            self.assertNotContains(response, f"class=\"course {mode}\"")
             self.assertNotContains(response, value)
 
     @patch.dict("django.conf.settings.FEATURES", {'ENABLE_VERIFIED_CERTIFICATES': False})
@@ -325,7 +324,7 @@ class DashboardTest(ModuleStoreTestCase, TestVerificationBase):
 
         self.course.start = datetime.now(pytz.UTC) - timedelta(days=2)
         self.course.end = datetime.now(pytz.UTC) - timedelta(days=1)
-        self.course.display_name = u"Omega"
+        self.course.display_name = "Omega"
         self.course = self.update_course(self.course, self.user.id)
 
         download_url = 'www.edx.org'
@@ -418,10 +417,10 @@ class DashboardTest(ModuleStoreTestCase, TestVerificationBase):
 
         Note to future developers:
             If you break this test so that the "check_mongo_calls(0)" fails,
-            please do NOT change it to "check_mongo_calls(n>1)". Instead, change
+            please do NOT change it to "check_mongo_calls(n>=1)". Instead, change
             your code to not load courses from the module store. This may
             involve adding fields to CourseOverview so that loading a full
-            CourseDescriptor isn't necessary.
+            CourseBlock isn't necessary.
         """
         # Create a course and log in the user.
         # Creating a new course will trigger a publish event and the course will be cached
@@ -485,7 +484,7 @@ class DashboardTestsWithSiteOverrides(SiteMixin, ModuleStoreTestCase):
     """
 
     def setUp(self):
-        super(DashboardTestsWithSiteOverrides, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.org = 'fakeX'
         self.course = CourseFactory.create(org=self.org)
         self.user = UserFactory.create(username='jack', email='jack@fake.edx.org', password='test')
@@ -541,7 +540,7 @@ class UserSettingsEventTestMixin(EventTestMixin):
     Mixin for verifying that user setting events were emitted during a test.
     """
     def setUp(self):  # lint-amnesty, pylint: disable=arguments-differ
-        super(UserSettingsEventTestMixin, self).setUp('common.djangoapps.util.model_utils.tracker')  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp('common.djangoapps.util.model_utils.tracker')
 
     def assert_user_setting_event_emitted(self, **kwargs):
         """
@@ -568,9 +567,12 @@ class UserSettingsEventTestMixin(EventTestMixin):
 class EnrollmentEventTestMixin(EventTestMixin):
     """ Mixin with assertions for validating enrollment events. """
     def setUp(self):  # lint-amnesty, pylint: disable=arguments-differ
-        super(EnrollmentEventTestMixin, self).setUp('common.djangoapps.student.models.tracker')  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp('common.djangoapps.student.models.tracker')
+        segment_patcher = patch('common.djangoapps.student.models.segment')
+        self.mock_segment_tracker = segment_patcher.start()
+        self.addCleanup(segment_patcher.stop)
 
-    def assert_enrollment_mode_change_event_was_emitted(self, user, course_key, mode):
+    def assert_enrollment_mode_change_event_was_emitted(self, user, course_key, mode, course, enrollment):
         """Ensures an enrollment mode change event was emitted"""
         self.mock_tracker.emit.assert_called_once_with(
             'edx.course.enrollment.mode_changed',
@@ -581,8 +583,13 @@ class EnrollmentEventTestMixin(EventTestMixin):
             }
         )
         self.mock_tracker.reset_mock()
+        properties, traits = self._build_segment_properties_and_traits(user, course_key, course, enrollment)
+        self.mock_segment_tracker.track.assert_called_once_with(
+            user.id, 'edx.course.enrollment.mode_changed', properties, traits=traits
+        )
+        self.mock_segment_tracker.reset_mock()
 
-    def assert_enrollment_event_was_emitted(self, user, course_key):
+    def assert_enrollment_event_was_emitted(self, user, course_key, course, enrollment):
         """Ensures an enrollment event was emitted since the last event related assertion"""
         self.mock_tracker.emit.assert_called_once_with(
             'edx.course.enrollment.activated',
@@ -593,8 +600,13 @@ class EnrollmentEventTestMixin(EventTestMixin):
             }
         )
         self.mock_tracker.reset_mock()
+        properties, traits = self._build_segment_properties_and_traits(user, course_key, course, enrollment, True)
+        self.mock_segment_tracker.track.assert_called_once_with(
+            user.id, 'edx.course.enrollment.activated', properties, traits=traits
+        )
+        self.mock_segment_tracker.reset_mock()
 
-    def assert_unenrollment_event_was_emitted(self, user, course_key):
+    def assert_unenrollment_event_was_emitted(self, user, course_key, course, enrollment):
         """Ensures an unenrollment event was emitted since the last event related assertion"""
         self.mock_tracker.emit.assert_called_once_with(
             'edx.course.enrollment.deactivated',
@@ -605,6 +617,35 @@ class EnrollmentEventTestMixin(EventTestMixin):
             }
         )
         self.mock_tracker.reset_mock()
+        properties, traits = self._build_segment_properties_and_traits(user, course_key, course, enrollment)
+        self.mock_segment_tracker.track.assert_called_once_with(
+            user.id, 'edx.course.enrollment.deactivated', properties, traits=traits
+        )
+        self.mock_segment_tracker.reset_mock()
+
+    def _build_segment_properties_and_traits(self, user, course_key, course, enrollment, activated=False):
+        """ Builds the segment properties and traits that are sent during enrollment events """
+        properties = {
+            'category': 'conversion',
+            'label': str(course_key),
+            'org': course_key.org,
+            'course': course_key.course,
+            'run': course_key.run,
+            'mode': enrollment.mode,
+        }
+        traits = properties.copy()
+        traits.update({'course_title': course.display_name, 'email': user.email})
+
+        if activated:
+            properties.update({
+                'email': user.email,
+                # This next property is for an experiment, see method's comments for more information
+                # we will just hardcode the default value while the experiment runs
+                'external_course_updates': -1,
+                'course_start': course.start,
+                'course_pacing': course.pacing,
+            })
+        return properties, traits
 
 
 class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
@@ -615,17 +656,18 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         user = User.objects.create_user("joe", "joe@joe.com", "password")
         course_id = CourseKey.from_string("edX/Test101/2013")
         course_id_partial = CourseKey.from_string("edX/Test101/")
+        course = CourseOverviewFactory.create(id=course_id)
 
         # Test basic enrollment
         assert not CourseEnrollment.is_enrolled(user, course_id)
         assert not CourseEnrollment.is_enrolled_by_partial(user, course_id_partial)
-        CourseEnrollment.enroll(user, course_id)
+        enrollment = CourseEnrollment.enroll(user, course_id)
         assert CourseEnrollment.is_enrolled(user, course_id)
         assert CourseEnrollment.is_enrolled_by_partial(user, course_id_partial)
-        self.assert_enrollment_event_was_emitted(user, course_id)
+        self.assert_enrollment_event_was_emitted(user, course_id, course, enrollment)
 
         # Enrolling them again should be harmless
-        CourseEnrollment.enroll(user, course_id)
+        enrollment = CourseEnrollment.enroll(user, course_id)
         assert CourseEnrollment.is_enrolled(user, course_id)
         assert CourseEnrollment.is_enrolled_by_partial(user, course_id_partial)
         self.assert_no_events_were_emitted()
@@ -634,7 +676,7 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         CourseEnrollment.unenroll(user, course_id)
         assert not CourseEnrollment.is_enrolled(user, course_id)
         assert not CourseEnrollment.is_enrolled_by_partial(user, course_id_partial)
-        self.assert_unenrollment_event_was_emitted(user, course_id)
+        self.assert_unenrollment_event_was_emitted(user, course_id, course, enrollment)
 
         # Unenrolling them again should also be harmless
         CourseEnrollment.unenroll(user, course_id)
@@ -661,6 +703,7 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         # Testing enrollment of newly unsaved user (i.e. no database entry)
         user = User(username="rusty", email="rusty@fake.edx.org")
         course_id = CourseLocator("edX", "Test101", "2013")
+        course = CourseOverviewFactory.create(id=course_id)
 
         assert not CourseEnrollment.is_enrolled(user, course_id)
 
@@ -670,18 +713,19 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
 
         # Implicit save() happens on new User object when enrolling, so this
         # should still work
-        CourseEnrollment.enroll(user, course_id)
+        enrollment = CourseEnrollment.enroll(user, course_id)
         assert CourseEnrollment.is_enrolled(user, course_id)
-        self.assert_enrollment_event_was_emitted(user, course_id)
+        self.assert_enrollment_event_was_emitted(user, course_id, course, enrollment)
 
     @unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
     def test_enrollment_by_email(self):
         user = User.objects.create(username="jack", email="jack@fake.edx.org")
         course_id = CourseLocator("edX", "Test101", "2013")
+        course = CourseOverviewFactory.create(id=course_id)
 
-        CourseEnrollment.enroll_by_email("jack@fake.edx.org", course_id)
+        enrollment = CourseEnrollment.enroll_by_email("jack@fake.edx.org", course_id)
         assert CourseEnrollment.is_enrolled(user, course_id)
-        self.assert_enrollment_event_was_emitted(user, course_id)
+        self.assert_enrollment_event_was_emitted(user, course_id, course, enrollment)
 
         # This won't throw an exception, even though the user is not found
         assert CourseEnrollment.enroll_by_email('not_jack@fake.edx.org', course_id) is None
@@ -699,7 +743,7 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         # Now unenroll them by email
         CourseEnrollment.unenroll_by_email("jack@fake.edx.org", course_id)
         assert not CourseEnrollment.is_enrolled(user, course_id)
-        self.assert_unenrollment_event_was_emitted(user, course_id)
+        self.assert_unenrollment_event_was_emitted(user, course_id, course, enrollment)
 
         # Harmless second unenroll
         CourseEnrollment.unenroll_by_email("jack@fake.edx.org", course_id)
@@ -715,21 +759,23 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         user = User(username="rusty", email="rusty@fake.edx.org")
         course_id1 = CourseLocator("edX", "Test101", "2013")
         course_id2 = CourseLocator("MITx", "6.003z", "2012")
+        course1 = CourseOverviewFactory.create(id=course_id1)
+        course2 = CourseOverviewFactory.create(id=course_id2)
 
-        CourseEnrollment.enroll(user, course_id1)
-        self.assert_enrollment_event_was_emitted(user, course_id1)
-        CourseEnrollment.enroll(user, course_id2)
-        self.assert_enrollment_event_was_emitted(user, course_id2)
+        enrollment1 = CourseEnrollment.enroll(user, course_id1)
+        self.assert_enrollment_event_was_emitted(user, course_id1, course1, enrollment1)
+        enrollment2 = CourseEnrollment.enroll(user, course_id2)
+        self.assert_enrollment_event_was_emitted(user, course_id2, course2, enrollment2)
         assert CourseEnrollment.is_enrolled(user, course_id1)
         assert CourseEnrollment.is_enrolled(user, course_id2)
 
         CourseEnrollment.unenroll(user, course_id1)
-        self.assert_unenrollment_event_was_emitted(user, course_id1)
+        self.assert_unenrollment_event_was_emitted(user, course_id1, course1, enrollment1)
         assert not CourseEnrollment.is_enrolled(user, course_id1)
         assert CourseEnrollment.is_enrolled(user, course_id2)
 
         CourseEnrollment.unenroll(user, course_id2)
-        self.assert_unenrollment_event_was_emitted(user, course_id2)
+        self.assert_unenrollment_event_was_emitted(user, course_id2, course2, enrollment2)
         assert not CourseEnrollment.is_enrolled(user, course_id1)
         assert not CourseEnrollment.is_enrolled(user, course_id2)
 
@@ -737,6 +783,7 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
     def test_activation(self):
         user = User.objects.create(username="jack", email="jack@fake.edx.org")
         course_id = CourseLocator("edX", "Test101", "2013")
+        course = CourseOverviewFactory.create(id=course_id)
         assert not CourseEnrollment.is_enrolled(user, course_id)
 
         # Creating an enrollment doesn't actually enroll a student
@@ -748,7 +795,7 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         # Until you explicitly activate it
         enrollment.activate()
         assert CourseEnrollment.is_enrolled(user, course_id)
-        self.assert_enrollment_event_was_emitted(user, course_id)
+        self.assert_enrollment_event_was_emitted(user, course_id, course, enrollment)
 
         # Activating something that's already active does nothing
         enrollment.activate()
@@ -758,7 +805,7 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         # Now deactive
         enrollment.deactivate()
         assert not CourseEnrollment.is_enrolled(user, course_id)
-        self.assert_unenrollment_event_was_emitted(user, course_id)
+        self.assert_unenrollment_event_was_emitted(user, course_id, course, enrollment)
 
         # Deactivating something that's already inactive does nothing
         enrollment.deactivate()
@@ -769,24 +816,25 @@ class EnrollInCourseTest(EnrollmentEventTestMixin, CacheIsolationTestCase):
         # for that user/course_id combination
         CourseEnrollment.enroll(user, course_id)
         assert CourseEnrollment.is_enrolled(user, course_id)
-        self.assert_enrollment_event_was_emitted(user, course_id)
+        self.assert_enrollment_event_was_emitted(user, course_id, course, enrollment)
 
     def test_change_enrollment_modes(self):
         user = User.objects.create(username="justin", email="jh@fake.edx.org")
         course_id = CourseLocator("edX", "Test101", "2013")
+        course = CourseOverviewFactory.create(id=course_id)
 
-        CourseEnrollment.enroll(user, course_id, "audit")
-        self.assert_enrollment_event_was_emitted(user, course_id)
+        enrollment = CourseEnrollment.enroll(user, course_id, "audit")
+        self.assert_enrollment_event_was_emitted(user, course_id, course, enrollment)
 
-        CourseEnrollment.enroll(user, course_id, "honor")
-        self.assert_enrollment_mode_change_event_was_emitted(user, course_id, "honor")
+        enrollment = CourseEnrollment.enroll(user, course_id, "honor")
+        self.assert_enrollment_mode_change_event_was_emitted(user, course_id, "honor", course, enrollment)
 
         # same enrollment mode does not emit an event
-        CourseEnrollment.enroll(user, course_id, "honor")
+        enrollment = CourseEnrollment.enroll(user, course_id, "honor")
         self.assert_no_events_were_emitted()
 
-        CourseEnrollment.enroll(user, course_id, "audit")
-        self.assert_enrollment_mode_change_event_was_emitted(user, course_id, "audit")
+        enrollment = CourseEnrollment.enroll(user, course_id, "audit")
+        self.assert_enrollment_mode_change_event_was_emitted(user, course_id, "audit", course, enrollment)
 
 
 @unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
@@ -794,7 +842,7 @@ class ChangeEnrollmentViewTest(ModuleStoreTestCase):
     """Tests the student.views.change_enrollment view"""
 
     def setUp(self):
-        super(ChangeEnrollmentViewTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = CourseFactory.create()
         self.user = UserFactory.create(password='secret')
         self.client.login(username=self.user.username, password='secret')
@@ -836,7 +884,7 @@ class ChangeEnrollmentViewTest(ModuleStoreTestCase):
         Tests that a student that is a currently enrolled verified student cannot
         accidentally change their enrollment mode
         """
-        CourseEnrollment.enroll(self.user, self.course.id, mode=u'verified')
+        CourseEnrollment.enroll(self.user, self.course.id, mode='verified')
         assert CourseEnrollment.is_enrolled(self.user, self.course.id)
         # now try to enroll the student in the default mode:
         response = self._enroll_through_view(self.course)
@@ -845,14 +893,14 @@ class ChangeEnrollmentViewTest(ModuleStoreTestCase):
             self.user, self.course.id
         )
         assert is_active
-        assert enrollment_mode == u'verified'
+        assert enrollment_mode == 'verified'
 
     def test_change_to_default_if_verified_not_active(self):
         """
         Tests that one can renroll for a course if one has already unenrolled
         """
         # enroll student
-        CourseEnrollment.enroll(self.user, self.course.id, mode=u'verified')
+        CourseEnrollment.enroll(self.user, self.course.id, mode='verified')
         # now unenroll student:
         CourseEnrollment.unenroll(self.user, self.course.id)
         # check that they are verified but inactive
@@ -860,7 +908,7 @@ class ChangeEnrollmentViewTest(ModuleStoreTestCase):
             self.user, self.course.id
         )
         assert not is_active
-        assert enrollment_mode == u'verified'
+        assert enrollment_mode == 'verified'
         # now enroll them through the view:
         response = self._enroll_through_view(self.course)
         assert response.status_code == 200
@@ -876,7 +924,7 @@ class AnonymousLookupTable(ModuleStoreTestCase):
     Tests for anonymous_id_functions
     """
     def setUp(self):
-        super(AnonymousLookupTable, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.course = CourseFactory.create()
         self.user = UserFactory.create()
         CourseModeFactory.create(
@@ -916,7 +964,7 @@ class AnonymousLookupTable(ModuleStoreTestCase):
         assert anonymous_id == anonymous_id_for_user(self.user, self.course.id)
 
     def test_roundtrip_with_unicode_course_id(self):
-        course2 = CourseFactory.create(display_name=u"Omega Course Ω")
+        course2 = CourseFactory.create(display_name="Omega Course Ω")
         CourseEnrollment.enroll(self.user, course2.id)
         anonymous_id = anonymous_id_for_user(self.user, course2.id)
         real_user = user_by_anonymous_id(anonymous_id)
@@ -958,14 +1006,14 @@ class RelatedProgramsTests(ProgramsApiConfigMixin, SharedModuleStoreTestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(RelatedProgramsTests, cls).setUpClass()
+        super().setUpClass()
 
         cls.user = UserFactory()
         cls.course = CourseFactory()
         cls.enrollment = CourseEnrollmentFactory(user=cls.user, course_id=cls.course.id)  # pylint: disable=no-member
 
     def setUp(self):
-        super(RelatedProgramsTests, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.url = reverse('dashboard')
 
@@ -987,7 +1035,7 @@ class RelatedProgramsTests(ProgramsApiConfigMixin, SharedModuleStoreTestCase):
 
     def expected_link_text(self, program):
         """Construct expected dashboard link text."""
-        return u'{title} {type}'.format(title=program['title'], type=program['type'])
+        return '{title} {type}'.format(title=program['title'], type=program['type'])
 
     def test_related_programs_listed(self, mock_get_programs):
         """Verify that related programs are listed when available."""
@@ -1019,7 +1067,7 @@ class RelatedProgramsTests(ProgramsApiConfigMixin, SharedModuleStoreTestCase):
 
     def test_program_title_unicode(self, mock_get_programs):
         """Verify that the dashboard can deal with programs whose titles contain Unicode."""
-        self.programs[0]['title'] = u'Bases matemáticas para estudiar ingeniería'
+        self.programs[0]['title'] = 'Bases matemáticas para estudiar ingeniería'
         mock_get_programs.return_value = self.programs
 
         response = self.client.get(self.url)
@@ -1030,7 +1078,7 @@ class UserAttributeTests(TestCase):
     """Tests for the UserAttribute model."""
 
     def setUp(self):
-        super(UserAttributeTests, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user = UserFactory()
         self.name = 'test'
         self.value = 'test-value'

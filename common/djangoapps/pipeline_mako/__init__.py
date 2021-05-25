@@ -1,4 +1,4 @@
-# lint-amnesty, pylint: disable=django-not-configured, missing-module-docstring
+# lint-amnesty, pylint: disable=missing-module-docstring
 
 from django.conf import settings as django_settings
 from django.contrib.staticfiles.storage import staticfiles_storage
@@ -140,6 +140,6 @@ def render_require_js_path_overrides(path_overrides):
         # RequireJS also already has a base URL set to the base static URL, so we can remove that.
         path = actual_url.replace('.js', '').replace(django_settings.STATIC_URL, '')
 
-        new_paths.append("'{module}': '{path}'".format(module=module, path=path))
+        new_paths.append(f"'{module}': '{path}'")
 
     return html.format(overrides=',\n'.join(new_paths))

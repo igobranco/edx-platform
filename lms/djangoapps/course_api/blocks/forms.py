@@ -48,7 +48,7 @@ class BlockListGetForm(Form):
         try:
             return int(value)
         except ValueError:
-            raise ValidationError("'{}' is not a valid depth value.".format(value))  # lint-amnesty, pylint: disable=raise-missing-from
+            raise ValidationError(f"'{value}' is not a valid depth value.")  # lint-amnesty, pylint: disable=raise-missing-from
 
     def clean_requested_fields(self):
         """
@@ -75,7 +75,7 @@ class BlockListGetForm(Form):
         try:
             usage_key = UsageKey.from_string(usage_key)
         except InvalidKeyError:
-            raise ValidationError("'{}' is not a valid usage key.".format(str(usage_key)))  # lint-amnesty, pylint: disable=raise-missing-from
+            raise ValidationError(f"'{str(usage_key)}' is not a valid usage key.")  # lint-amnesty, pylint: disable=raise-missing-from
 
         return usage_key.replace(course_key=modulestore().fill_in_run(usage_key.course_key))
 
@@ -83,7 +83,7 @@ class BlockListGetForm(Form):
         """
         Return cleaned data, including additional requested fields.
         """
-        cleaned_data = super(BlockListGetForm, self).clean()  # lint-amnesty, pylint: disable=super-with-arguments
+        cleaned_data = super().clean()
 
         # Add additional requested_fields that are specified as separate
         # parameters, if they were requested.

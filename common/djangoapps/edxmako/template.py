@@ -17,7 +17,6 @@ from django.conf import settings
 from django.template import Context, engines, Origin
 from edx_django_utils.cache import RequestCache
 from mako.template import Template as MakoTemplate
-from six import text_type
 
 from . import Engines, LOOKUP
 from .request_context import get_template_request_context
@@ -28,7 +27,7 @@ KEY_CSRF_TOKENS = ('csrf_token', 'csrf')
 UNKNOWN_SOURCE = '<unknown source>'
 
 
-class Template(object):
+class Template:
     """
     This bridges the gap between a Mako template and a Django template. It can
     be rendered like it is a Django template because the arguments are transformed
@@ -122,4 +121,4 @@ class Template(object):
         """
         for key in KEY_CSRF_TOKENS:
             if key in context_dictionary:
-                context_dictionary[key] = text_type(context_dictionary[key])
+                context_dictionary[key] = str(context_dictionary[key])

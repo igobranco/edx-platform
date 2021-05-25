@@ -4,11 +4,12 @@ import ddt
 from django.test import RequestFactory
 from django.test.utils import override_settings
 
-from common.lib.xmodule.xmodule.capa_base import SHOWANSWER
+from edx_toggles.toggles.testutils import override_waffle_flag
+
+from common.lib.xmodule.xmodule.capa_module import SHOWANSWER
 from lms.djangoapps.ccx.tests.test_overrides import inject_field_overrides
 from lms.djangoapps.courseware.model_data import FieldDataCache
 from lms.djangoapps.courseware.module_render import get_module
-from lms.djangoapps.experiments.testutils import override_experiment_waffle_flag
 from openedx.features.course_experience import RELATIVE_DATES_FLAG
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory
@@ -36,11 +37,11 @@ class ShowAnswerFieldOverrideTest(ModuleStoreTestCase):
 
     @ddt.data(True, False)
     def test_override_enabled_for(self, active):
-        with override_experiment_waffle_flag(RELATIVE_DATES_FLAG, active=active):
+        with override_waffle_flag(RELATIVE_DATES_FLAG, active=active):
             # Instructor paced course will just have the default value
             ip_course = self.setup_course()
             course_module = self.get_course_module(ip_course)
-            self.assertEqual(course_module.showanswer, SHOWANSWER.FINISHED)
+            assert course_module.showanswer == SHOWANSWER.FINISHED
 
             # This should be updated to not explicitly add in the showanswer so it can test the
             # default case of never touching showanswer. Reference ticket AA-307 (if that's closed,
@@ -48,9 +49,9 @@ class ShowAnswerFieldOverrideTest(ModuleStoreTestCase):
             sp_course = self.setup_course(self_paced=True, showanswer=SHOWANSWER.FINISHED)
             course_module = self.get_course_module(sp_course)
             if active:
-                self.assertEqual(course_module.showanswer, SHOWANSWER.AFTER_ALL_ATTEMPTS_OR_CORRECT)
+                assert course_module.showanswer == SHOWANSWER.AFTER_ALL_ATTEMPTS_OR_CORRECT
             else:
-                self.assertEqual(course_module.showanswer, SHOWANSWER.FINISHED)
+                assert course_module.showanswer == SHOWANSWER.FINISHED
 
     @ddt.data(
         (SHOWANSWER.ATTEMPTED, SHOWANSWER.ATTEMPTED_NO_PAST_DUE),
@@ -63,8 +64,8 @@ class ShowAnswerFieldOverrideTest(ModuleStoreTestCase):
         (SHOWANSWER.ALWAYS, SHOWANSWER.ALWAYS),
     )
     @ddt.unpack
-    @override_experiment_waffle_flag(RELATIVE_DATES_FLAG, active=True)
+    @override_waffle_flag(RELATIVE_DATES_FLAG, active=True)
     def test_get(self, initial_value, expected_final_value):
         course = self.setup_course(self_paced=True, showanswer=initial_value)
         course_module = self.get_course_module(course)
-        self.assertEqual(course_module.showanswer, expected_final_value)
+        assert course_module.showanswer == expected_final_value

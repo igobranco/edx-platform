@@ -54,7 +54,7 @@ class Command(BaseCommand):  # lint-amnesty, pylint: disable=missing-class-docst
         print("Groups", groups)
 
         # Confirm group probabilities add up to 1
-        total = sum(zip(*groups)[1])  # lint-amnesty, pylint: disable=unsubscriptable-object
+        total = sum(zip(*groups)[1])  # lint-amnesty, pylint: disable=unsubscriptable-object, zip-builtin-not-iterating
         print("Total:", total)
         if abs(total - 1) > 0.01:
             print("Total not 1")
@@ -68,7 +68,7 @@ class Command(BaseCommand):  # lint-amnesty, pylint: disable=missing-class-docst
 
         group_objects = {}
 
-        f = open(options['log_name'], "a+")
+        f = open(options['log_name'], "a+")  # lint-amnesty, pylint: disable=consider-using-with
 
         # Create groups
         for group in dict(groups):
@@ -89,7 +89,7 @@ class Command(BaseCommand):  # lint-amnesty, pylint: disable=missing-class-docst
             v = random.uniform(0, 1)
             group = group_from_value(groups, v)
             group_objects[group].users.add(user)
-            f.write(u"Assigned user {name} ({id}) to {group}\n".format(
+            f.write("Assigned user {name} ({id}) to {group}\n".format(
                 name=user.username,
                 id=user.id,
                 group=group

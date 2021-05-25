@@ -4,7 +4,7 @@ import logging
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.template import Engine, engines, TemplateDoesNotExist
+from django.template import Engine, TemplateDoesNotExist, engines
 from django.template.loaders.app_directories import Loader as AppDirectoriesLoader
 from django.template.loaders.filesystem import Loader as FilesystemLoader
 
@@ -14,7 +14,7 @@ from openedx.core.lib.tempdir import mkdtemp_clean
 log = logging.getLogger(__name__)
 
 
-class MakoLoader(object):
+class MakoLoader:
     """
     This is a Django loader object which will load the template as a
     Mako template if the first line is "## mako". It is based off Loader
@@ -52,7 +52,7 @@ class MakoLoader(object):
 
         # In order to allow dynamic template overrides, we need to cache templates based on their absolute paths
         # rather than relative paths, overriding templates would have same relative paths.
-        module_directory = self.module_directory.rstrip("/") + "/{dir_hash}/".format(dir_hash=hash(origin.name))
+        module_directory = self.module_directory.rstrip("/") + f"/{hash(origin.name)}/"
 
         if source.startswith("## mako\n"):
             # This is a mako template

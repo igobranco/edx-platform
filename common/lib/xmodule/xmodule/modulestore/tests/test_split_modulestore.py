@@ -9,22 +9,20 @@ import random
 import re
 import unittest
 from importlib import import_module
+from unittest.mock import patch
 
 import pytest
 import ddt
-import six
 from ccx_keys.locator import CCXBlockUsageLocator
 from contracts import contract
 from django.core.cache import InvalidCacheBackendError, caches
-from mock import patch
 from opaque_keys.edx.locator import BlockUsageLocator, CourseKey, CourseLocator, LocalId, VersionTree
 from path import Path as path
-from six.moves import range
 from xblock.fields import Reference, ReferenceList, ReferenceValueDict
 
 from openedx.core.lib import tempdir
 from openedx.core.lib.tests import attr
-from xmodule.course_module import CourseDescriptor
+from xmodule.course_module import CourseBlock
 from xmodule.fields import Date, Timedelta
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.edit_info import EditInfoMixin
@@ -58,12 +56,12 @@ class SplitModuleTest(unittest.TestCase):
     # Snippets of what would be in the django settings envs file
     DOC_STORE_CONFIG = {
         'host': MONGO_HOST,
-        'db': 'test_xmodule_{0}'.format(os.getpid()),
+        'db': f'test_xmodule_{os.getpid()}',
         'port': MONGO_PORT_NUM,
         'collection': 'modulestore',
     }
     modulestore_options = {
-        'default_class': 'xmodule.raw_module.RawDescriptor',
+        'default_class': 'xmodule.hidden_module.HiddenDescriptor',
         'fs_root': tempdir.mkdtemp_clean(),
         'xblock_mixins': (InheritanceMixin, XModuleMixin, EditInfoMixin)
     }
@@ -503,7 +501,7 @@ class SplitModuleTest(unittest.TestCase):
         '''
         Sets up the initial data into the db
         '''
-        for _course_id, course_spec in six.iteritems(SplitModuleTest.COURSE_CONTENT):
+        for _course_id, course_spec in SplitModuleTest.COURSE_CONTENT.items():
             course = split_store.create_course(
                 course_spec['org'],
                 course_spec['course'],
@@ -514,7 +512,7 @@ class SplitModuleTest(unittest.TestCase):
                 root_block_id=course_spec['root_block_id']
             )
             for revision in course_spec.get('revisions', []):
-                for (block_type, block_id), fields in six.iteritems(revision.get('update', {})):
+                for (block_type, block_id), fields in revision.get('update', {}).items():
                     # cheat since course is most frequent
                     if course.location.block_id == block_id:
                         block = course
@@ -522,7 +520,7 @@ class SplitModuleTest(unittest.TestCase):
                         # not easy to figure out the category but get_item won't care
                         block_usage = BlockUsageLocator.make_relative(course.location, block_type, block_id)
                         block = split_store.get_item(block_usage)
-                    for key, value in six.iteritems(fields):
+                    for key, value in fields.items():
                         setattr(block, key, value)
                 # create new blocks into dag: parent must already exist; thus, order is important
                 new_ele_dict = {}
@@ -551,7 +549,7 @@ class SplitModuleTest(unittest.TestCase):
         split_store.copy("test@edx.org", source_course, destination, [to_publish], None)
 
     def setUp(self):
-        super(SplitModuleTest, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.user_id = random.getrandbits(32)
 
     def tearDown(self):
@@ -562,7 +560,7 @@ class SplitModuleTest(unittest.TestCase):
             modulestore()._drop_database(database=False, connections=False)  # pylint: disable=protected-access
             # drop the modulestore to force re init
             SplitModuleTest.modulestore = None
-        super(SplitModuleTest, self).tearDown()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().tearDown()
 
     def findByIdInResult(self, collection, _id):  # pylint: disable=invalid-name
         """
@@ -953,7 +951,7 @@ class TestCourseStructureCache(SplitModuleTest):
             'org', 'course', 'test_run', self.user, BRANCH_NAME_DRAFT,
         )
 
-        super(TestCourseStructureCache, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
     @patch('xmodule.modulestore.split_mongo.mongo_connection.get_cache')
     def test_course_structure_cache(self, mock_get_cache):
@@ -1083,8 +1081,8 @@ class SplitModuleItemTests(SplitModuleTest):
         # positive tests of various forms
         locator = course.location.map_into_course(CourseLocator(version_guid=previous_version))
         block = modulestore().get_item(locator)
-        assert isinstance(block, CourseDescriptor)
-        assert isinstance(modulestore().get_item(locator), CourseDescriptor)
+        assert isinstance(block, CourseBlock)
+        assert isinstance(modulestore().get_item(locator), CourseBlock)
 
         def verify_greek_hero(block):
             """
@@ -1125,7 +1123,7 @@ class SplitModuleItemTests(SplitModuleTest):
         locator = BlockUsageLocator(
             CourseLocator(org='testx', course='wonderful', run="run", branch=BRANCH_NAME_PUBLISHED), 'course', 'head23456'  # lint-amnesty, pylint: disable=line-too-long
         )
-        assert isinstance(modulestore().get_item(locator), CourseDescriptor)
+        assert isinstance(modulestore().get_item(locator), CourseBlock)
 
         # negative tests--not found
         # no such course or block
@@ -1741,8 +1739,8 @@ class TestItemCrud(SplitModuleTest):
             # First child should have been moved to second position, and better child takes the lead
             refetch_course = store.get_course(versionless_course_locator)
             children = refetch_course.get_children()
-            assert six.text_type(children[1].location) == six.text_type(first_child.location)
-            assert six.text_type(children[0].location) == six.text_type(second_child.location)
+            assert str(children[1].location) == str(first_child.location)
+            assert str(children[0].location) == str(second_child.location)
 
             # Clean up the data so we don't break other tests which apparently expect a particular state
             store.delete_course(refetch_course.id, user)
@@ -1772,7 +1770,7 @@ class TestCourseCreation(SplitModuleTest):
 
         assert structure_info['edited_by'] == 'create_user'
         # check the returned course object
-        assert isinstance(new_course, CourseDescriptor)
+        assert isinstance(new_course, CourseBlock)
         assert new_course.category == 'course'
         assert not new_course.show_calculator
         assert new_course.allow_anonymous
@@ -1956,7 +1954,7 @@ class TestInheritance(SplitModuleTest):
         The actual test
         """
         # Note, not testing value where defined (course) b/c there's no
-        # defined accessor for it on CourseDescriptor.
+        # defined accessor for it on CourseBlock.
         locator = BlockUsageLocator(
             CourseLocator(org='testx', course='GreekHero', run="run", branch=BRANCH_NAME_DRAFT), 'problem', 'problem3_2'
         )

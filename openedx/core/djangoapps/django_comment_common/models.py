@@ -14,9 +14,9 @@ from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_noop
 from jsonfield.fields import JSONField
 from opaque_keys.edx.django.models import CourseKeyField
-from six import text_type
 
 from openedx.core.djangoapps.xmodule_django.models import NoneToEmptyManager
+from openedx.core.lib.cache_utils import request_cached
 from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.roles import GlobalStaff
 from xmodule.modulestore.django import modulestore
@@ -64,7 +64,7 @@ def assign_role(course_id, user, rolename):
     """
     role, created = Role.objects.get_or_create(course_id=course_id, name=rolename)
     if created:
-        logging.info(u"EDUCATOR-1635: Created role {} for course {}".format(role, course_id))
+        logging.info(f"EDUCATOR-1635: Created role {role} for course {course_id}")
     user.roles.add(role)
 
 
@@ -82,12 +82,12 @@ class Role(models.Model):
     users = models.ManyToManyField(User, related_name="roles")
     course_id = CourseKeyField(max_length=255, blank=True, db_index=True)
 
-    class Meta(object):
+    class Meta:
         # use existing table that was originally created from lms.djangoapps.discussion.django_comment_client app
         db_table = 'django_comment_client_role'
 
     def __str__(self):
-        return self.name + " for " + (text_type(self.course_id) if self.course_id else "all courses")
+        return self.name + " for " + (str(self.course_id) if self.course_id else "all courses")
 
     # TODO the name of this method is a little bit confusing,
     # since it's one-off and doesn't handle inheritance later
@@ -98,7 +98,7 @@ class Role(models.Model):
         """
         if role.course_id and role.course_id != self.course_id:
             logging.warning(
-                u"%s cannot inherit permissions from %s due to course_id inconsistency",
+                "%s cannot inherit permissions from %s due to course_id inconsistency",
                 self,
                 role,
             )
@@ -138,7 +138,7 @@ class Permission(models.Model):
     name = models.CharField(max_length=30, null=False, blank=False, primary_key=True)
     roles = models.ManyToManyField(Role, related_name="permissions")
 
-    class Meta(object):
+    class Meta:
         # use existing table that was originally created from lms.djangoapps.discussion.django_comment_client app
         db_table = 'django_comment_client_permission'
 
@@ -158,7 +158,7 @@ def permission_blacked_out(course, role_names, permission_name):
     return (
         not course.forum_posts_allowed and
         role_names == {FORUM_ROLE_STUDENT} and
-        any([permission_name.startswith(prefix) for prefix in ['edit', 'update', 'create']])
+        any(permission_name.startswith(prefix) for prefix in ['edit', 'update', 'create'])
     )
 
 
@@ -205,7 +205,7 @@ class ForumsConfig(ConfigurationModel):
 
     connection_timeout = models.FloatField(
         default=5.0,
-        help_text=u"Seconds to wait when trying to connect to the comment service.",
+        help_text="Seconds to wait when trying to connect to the comment service.",
     )
 
     class Meta(ConfigurationModel.Meta):
@@ -221,7 +221,7 @@ class ForumsConfig(ConfigurationModel):
         """
         Simple representation so the admin screen looks less ugly.
         """
-        return u"ForumsConfig: timeout={}".format(self.connection_timeout)
+        return f"ForumsConfig: timeout={self.connection_timeout}"
 
 
 class CourseDiscussionSettings(models.Model):
@@ -239,7 +239,7 @@ class CourseDiscussionSettings(models.Model):
     discussions_id_map = JSONField(
         null=True,
         blank=True,
-        help_text=u"Key/value store mapping discussion IDs to discussion XBlock usage keys.",
+        help_text="Key/value store mapping discussion IDs to discussion XBlock usage keys.",
     )
     always_divide_inline_discussions = models.BooleanField(default=False)
     _divided_discussions = models.TextField(db_column='divided_discussions', null=True, blank=True)  # JSON list
@@ -250,7 +250,7 @@ class CourseDiscussionSettings(models.Model):
     ASSIGNMENT_TYPE_CHOICES = ((NONE, 'None'), (COHORT, 'Cohort'), (ENROLLMENT_TRACK, 'Enrollment Track'))
     division_scheme = models.CharField(max_length=20, choices=ASSIGNMENT_TYPE_CHOICES, default=NONE)
 
-    class Meta(object):
+    class Meta:
         # use existing table that was originally created from django_comment_common app
         db_table = 'django_comment_common_coursediscussionsettings'
 
@@ -268,6 +268,47 @@ class CourseDiscussionSettings(models.Model):
         """
         self._divided_discussions = json.dumps(value)
 
+    @request_cached()
+    @classmethod
+    def get(cls, course_key):
+        """
+        Get and/or create settings
+        """
+        try:
+            course_discussion_settings = cls.objects.get(course_id=course_key)
+        except cls.DoesNotExist:
+            from openedx.core.djangoapps.course_groups.cohorts import get_legacy_discussion_settings
+            legacy_discussion_settings = get_legacy_discussion_settings(course_key)
+            course_discussion_settings, _ = cls.objects.get_or_create(
+                course_id=course_key,
+                defaults={
+                    'always_divide_inline_discussions': legacy_discussion_settings['always_cohort_inline_discussions'],
+                    'divided_discussions': legacy_discussion_settings['cohorted_discussions'],
+                    'division_scheme': cls.COHORT if legacy_discussion_settings['is_cohorted'] else cls.NONE
+                },
+            )
+        return course_discussion_settings
+
+    def update(self, validated_data: dict):
+        """
+        Set discussion settings for a course
+
+        Returns:
+            A CourseDiscussionSettings object
+        """
+        fields = {
+            'division_scheme': (str,)[0],
+            'always_divide_inline_discussions': bool,
+            'divided_discussions': list,
+        }
+        for field, field_type in fields.items():
+            if field in validated_data:
+                if not isinstance(validated_data[field], field_type):
+                    raise ValueError(f"Incorrect field type for `{field}`. Type must be `{field_type.__name__}`")
+                setattr(self, field, validated_data[field])
+        self.save()
+        return self
+
 
 class DiscussionsIdMapping(models.Model):
     """
@@ -277,10 +318,10 @@ class DiscussionsIdMapping(models.Model):
     """
     course_id = CourseKeyField(db_index=True, primary_key=True, max_length=255)
     mapping = JSONField(
-        help_text=u"Key/value store mapping discussion IDs to discussion XBlock usage keys.",
+        help_text="Key/value store mapping discussion IDs to discussion XBlock usage keys.",
     )
 
-    class Meta(object):
+    class Meta:
         # use existing table that was originally created from django_comment_common app
         db_table = 'django_comment_common_discussionsidmapping'
 

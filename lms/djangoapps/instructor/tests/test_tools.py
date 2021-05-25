@@ -6,20 +6,19 @@ Tests for views/tools.py.
 import datetime
 import json
 import unittest
+from unittest import mock
+
 import pytest
-import mock
-import six
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.core.exceptions import MultipleObjectsReturned
 from django.test import TestCase
+from edx_when.api import set_dates_for_course
+from edx_when.field_data import DateLookupFieldData
 from opaque_keys.edx.keys import CourseKey
 from pytz import UTC
 
-from edx_when.api import set_dates_for_course
-from edx_when.field_data import DateLookupFieldData
+from common.djangoapps.student.tests.factories import CourseEnrollmentFactory, UserFactory
 from openedx.core.djangoapps.course_date_signals import handlers
-from openedx.core.djangoapps.schedules.tests.factories import ScheduleFactory
-from common.djangoapps.student.tests.factories import UserFactory
 from xmodule.fields import Date
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase, SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
@@ -34,7 +33,7 @@ class TestDashboardError(unittest.TestCase):
     Test DashboardError exceptions.
     """
     def test_response(self):
-        error = tools.DashboardError(u'Oh noes!')
+        error = tools.DashboardError('Oh noes!')
         response = json.loads(error.response().content.decode('utf-8'))
         assert response == {'error': 'Oh noes!'}
 
@@ -73,7 +72,7 @@ class TestRequireStudentIdentifier(TestCase):
         """
         Fixtures
         """
-        super(TestRequireStudentIdentifier, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.student = UserFactory.create()
 
     def test_valid_student_id(self):
@@ -102,7 +101,7 @@ class TestFindUnit(SharedModuleStoreTestCase):
     """
     @classmethod
     def setUpClass(cls):
-        super(TestFindUnit, cls).setUpClass()
+        super().setUpClass()
         cls.course = CourseFactory.create()
         with cls.store.bulk_operations(cls.course.id, emit_signals=False):
             week1 = ItemFactory.create(parent=cls.course)
@@ -112,7 +111,7 @@ class TestFindUnit(SharedModuleStoreTestCase):
         """
         Test finding a nested unit.
         """
-        url = six.text_type(self.homework.location)
+        url = str(self.homework.location)
         found_unit = tools.find_unit(self.course, url)
         assert found_unit.location == self.homework.location
 
@@ -157,7 +156,7 @@ class TestGetUnitsWithDueDate(ModuleStoreTestCase):
             """
             URLs for sequence of nodes.
             """
-            return sorted(six.text_type(i.location) for i in seq)
+            return sorted(str(i.location) for i in seq)
 
         assert urls(tools.get_units_with_due_date(self.course)) == urls((self.week1, self.week2))
 
@@ -176,14 +175,11 @@ class TestTitleOrUrl(unittest.TestCase):
             """
             Mock implementation of __unicode__ or __str__ for the unit's location.
             """
-            return u'test:hello'
+            return 'test:hello'
 
         unit = mock.Mock(display_name=None)
-        if six.PY2:
-            unit.location.__unicode__ = mock_location_text
-        else:
-            unit.location.__str__ = mock_location_text
-        assert tools.title_or_url(unit) == u'test:hello'
+        unit.location.__str__ = mock_location_text
+        assert tools.title_or_url(unit) == 'test:hello'
 
 
 def inject_field_data(blocks, course, user):
@@ -201,7 +197,7 @@ class TestSetDueDateExtension(ModuleStoreTestCase):
         """
         Fixtures.
         """
-        super(TestSetDueDateExtension, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         self.due = due = datetime.datetime(2010, 5, 12, 2, 42, tzinfo=UTC)
         course = CourseFactory.create()
@@ -222,7 +218,7 @@ class TestSetDueDateExtension(ModuleStoreTestCase):
         self.week3 = week3
         self.user = user
 
-        ScheduleFactory.create(enrollment__user=self.user, enrollment__course_id=self.course.id)
+        CourseEnrollmentFactory.create(user=self.user, course_id=self.course.id)
 
         inject_field_data((course, week1, week2, week3, homework, assignment), course, user)
 
@@ -290,7 +286,7 @@ class TestDataDumps(ModuleStoreTestCase):
         """
         Fixtures.
         """
-        super(TestDataDumps, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
 
         due = datetime.datetime(2010, 5, 12, 2, 42, tzinfo=UTC)
         course = CourseFactory.create()
@@ -310,8 +306,8 @@ class TestDataDumps(ModuleStoreTestCase):
         self.week2 = week2
         self.user1 = user1
         self.user2 = user2
-        ScheduleFactory.create(enrollment__user=self.user1, enrollment__course_id=self.course.id)
-        ScheduleFactory.create(enrollment__user=self.user2, enrollment__course_id=self.course.id)
+        CourseEnrollmentFactory.create(user=self.user1, course_id=self.course.id)
+        CourseEnrollmentFactory.create(user=self.user2, course_id=self.course.id)
         handlers.extract_dates(None, course.id)
 
     def test_dump_module_extensions(self):
@@ -378,7 +374,7 @@ class TestStudentFromIdentifier(TestCase):
     """
     @classmethod
     def setUpClass(cls):
-        super(TestStudentFromIdentifier, cls).setUpClass()
+        super().setUpClass()
         cls.valid_student = UserFactory.create(username='baz@touchstone')
         cls.student_conflicting_email = UserFactory.create(email='foo@touchstone.com')
         cls.student_conflicting_username = UserFactory.create(username='foo@touchstone.com')

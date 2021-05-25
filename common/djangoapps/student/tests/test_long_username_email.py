@@ -1,18 +1,18 @@
-# -*- coding: utf-8 -*-  # lint-amnesty, pylint: disable=missing-module-docstring
-
-
+""" Test case for longer user emails."""
 import json
 
 from django.test import TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
 
 from openedx.core.djangoapps.user_api.accounts import USERNAME_BAD_LENGTH_MSG
 
 
+@override_settings(RATELIMIT_ENABLE=False)
 class TestLongUsernameEmail(TestCase):  # lint-amnesty, pylint: disable=missing-class-docstring
 
     def setUp(self):
-        super(TestLongUsernameEmail, self).setUp()  # lint-amnesty, pylint: disable=super-with-arguments
+        super().setUp()
         self.url = reverse('create_account')
         self.url_params = {
             'username': 'username',
