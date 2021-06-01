@@ -348,7 +348,7 @@ class RegistrationFormFactory:
 
         custom_form = get_registration_extension_form()
         if custom_form:
-            custom_form_field_names = [ field_name for field_name, field in custom_form.fields.items()]
+            custom_form_field_names = [field_name for field_name, field in custom_form.fields.items()]
             valid_fields.extend(custom_form_field_names)
 
         field_order = configuration_helpers.get_value('REGISTRATION_FIELD_ORDER')
@@ -382,7 +382,7 @@ class RegistrationFormFactory:
 
         # Custom form fields can be added via the form set in settings.REGISTRATION_EXTENSION_FORM
         custom_form = get_registration_extension_form()
-        custom_form_field_names = [ field_name for field_name, field in custom_form.fields.items()] if custom_form else []
+        custom_form_field_names = [field_name for field_name, field in custom_form.fields.items()] if custom_form else []
 
         # Go through the fields in the fields order and add them if they are required or visible
         for field_name in self.field_order:
