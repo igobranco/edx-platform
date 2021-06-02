@@ -1422,7 +1422,7 @@ class RegistrationViewTestV1(ThirdPartyAuthTestMixin, UserAPITestCase):
         sent_email = mail.outbox[0]
         assert sent_email.to == [self.EMAIL]
         assert sent_email.subject ==\
-               f'Action Required: Activate your {settings.PLATFORM_NAME} account'
+            f'Action Required: Activate your {settings.PLATFORM_NAME} account'
         assert f'high-quality {settings.PLATFORM_NAME} courses' in sent_email.body
 
     @ddt.data(
@@ -1760,7 +1760,7 @@ class RegistrationViewTestV1(ThirdPartyAuthTestMixin, UserAPITestCase):
 
         self._assert_fields_match(actual_field, expected_field)
 
-    def _assert_reg_absent_field(self, extra_fields_setting, expected_absent_field : str):
+    def _assert_reg_absent_field(self, extra_fields_setting, expected_absent_field: str):
         """
         Retrieve the registration form description from the server and
         verify that it not contains the expected absent field.
@@ -1783,7 +1783,7 @@ class RegistrationViewTestV1(ThirdPartyAuthTestMixin, UserAPITestCase):
 
         current_present_field_names = [field["name"] for field in form_desc["fields"]]
         assert expected_absent_field not in current_present_field_names, \
-                "Expected absent field {expected}".format(expected=expected_absent_field)
+            "Expected absent field {expected}".format(expected=expected_absent_field)
 
     def _assert_password_field_hidden(self, field_settings):
         self._assert_reg_field(field_settings, {
@@ -1856,7 +1856,6 @@ class RegistrationViewTestV2(RegistrationViewTestV1):
         assert field_names == ['name', 'confirm_email', 'password', 'gender', 'year_of_birth', 'level_of_education',
                                'mailing_address', 'goals', 'honor_code', 'city', 'country', 'email', 'favorite_movie',
                                'state', 'username']
-
 
     @override_settings(
         REGISTRATION_EXTRA_FIELDS={
@@ -1932,8 +1931,8 @@ class RegistrationViewTestV2(RegistrationViewTestV1):
         form_desc = json.loads(response.content.decode('utf-8'))
         field_names = [field["name"] for field in form_desc["fields"]]
         assert field_names ==\
-               ['email', 'name', 'username', 'password', 'confirm_email', 'city', 'state', 'country', 'gender',
-                'year_of_birth', 'level_of_education', 'mailing_address', 'goals', 'honor_code', 'favorite_movie']
+            ['email', 'name', 'username', 'password', 'confirm_email', 'city', 'state', 'country', 'gender',
+             'year_of_birth', 'level_of_education', 'mailing_address', 'goals', 'honor_code', 'favorite_movie']
 
     @override_settings(
         REGISTRATION_EXTRA_FIELDS={
@@ -1982,8 +1981,8 @@ class RegistrationViewTestV2(RegistrationViewTestV1):
         form_desc = json.loads(response.content.decode('utf-8'))
         field_names = [field["name"] for field in form_desc["fields"]]
         assert field_names ==\
-               ['name', 'username', 'email', 'confirm_email', 'favorite_movie', 'password', 'honor_code', 'city', 'state', 'country',
-                'gender', 'year_of_birth', 'level_of_education', 'mailing_address', 'goals']
+            ['name', 'username', 'email', 'confirm_email', 'favorite_movie', 'password', 'honor_code', 'city', 'state', 'country',
+             'gender', 'year_of_birth', 'level_of_education', 'mailing_address', 'goals']
 
     def test_registration_form_confirm_email(self):
         self._assert_reg_field(
