@@ -358,7 +358,8 @@ class RegistrationFormFactory:
         # if not append missing fields at end of field order
         if set(valid_fields) != set(field_order):
             difference = set(valid_fields).difference(set(field_order))
-            field_order.extend(difference)
+            # sort the additional fields so we have could have a deterministic result when presenting them
+            field_order.extend(sorted(difference))
 
         self.field_order = field_order
 
