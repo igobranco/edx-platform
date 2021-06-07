@@ -1981,8 +1981,8 @@ class RegistrationViewTestV2(RegistrationViewTestV1):
         form_desc = json.loads(response.content.decode('utf-8'))
         field_names = [field["name"] for field in form_desc["fields"]]
         assert field_names ==\
-            ['name', 'username', 'email', 'confirm_email', 'favorite_movie', 'password', 'honor_code', 'city', 'state', 'country',
-             'gender', 'year_of_birth', 'level_of_education', 'mailing_address', 'goals']
+            ['name', 'username', 'email', 'confirm_email', 'favorite_movie', 'password', 'honor_code', 'city',
+            'state', 'country', 'gender', 'year_of_birth', 'level_of_education', 'mailing_address', 'goals']
 
     def test_registration_form_confirm_email(self):
         self._assert_reg_field(
