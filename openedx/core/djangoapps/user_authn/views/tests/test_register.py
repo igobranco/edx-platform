@@ -1982,7 +1982,7 @@ class RegistrationViewTestV2(RegistrationViewTestV1):
         field_names = [field["name"] for field in form_desc["fields"]]
         assert field_names ==\
             ['name', 'username', 'email', 'confirm_email', 'favorite_movie', 'password', 'honor_code', 'city',
-            'state', 'country', 'gender', 'year_of_birth', 'level_of_education', 'mailing_address', 'goals']
+             'state', 'country', 'gender', 'year_of_birth', 'level_of_education', 'mailing_address', 'goals']
 
     def test_registration_form_confirm_email(self):
         self._assert_reg_field(
