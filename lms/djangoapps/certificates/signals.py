@@ -52,10 +52,10 @@ def _update_cert_settings_on_pacing_change(sender, updated_course_overview, **kw
     ))
 
 
-@receiver(post_save, sender=CertificateWhitelist, dispatch_uid="append_certificate_whitelist")
-def _listen_for_certificate_whitelist_append(sender, instance, **kwargs):  # pylint: disable=unused-argument
+@receiver(post_save, sender=CertificateWhitelist, dispatch_uid="append_certificate_allowlist")
+def _listen_for_certificate_allowlist_append(sender, instance, **kwargs):  # pylint: disable=unused-argument
     """
-    Listen for a user being added to or modified on the whitelist (allowlist)
+    Listen for a user being added to or modified on the allowlist
     """
     if not auto_certificate_generation_enabled():
         return
@@ -66,7 +66,7 @@ def _listen_for_certificate_whitelist_append(sender, instance, **kwargs):  # pyl
         return generate_allowlist_certificate_task(instance.user, instance.course_id)
 
     if _fire_ungenerated_certificate_task(instance.user, instance.course_id):
-        log.info('Certificate generation task initiated for {user} : {course} via whitelist'.format(
+        log.info('Certificate generation task initiated for {user} : {course} via allowlist'.format(
             user=instance.user.id,
             course=instance.course_id
         ))
@@ -114,7 +114,7 @@ def _listen_for_failing_grade(sender, user, course_id, grade, **kwargs):  # pyli
     cert = GeneratedCertificate.certificate_for_student(user, course_id)
     if cert is not None:
         if CertificateStatuses.is_passing_status(cert.status):
-            cert.mark_notpassing(grade.percent)
+            cert.mark_notpassing(grade.percent, source='notpassing_signal')
             log.info('Certificate marked not passing for {user} : {course} via failing grade: {grade}'.format(
                 user=user.id,
                 course=course_id,

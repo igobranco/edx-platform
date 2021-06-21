@@ -30,11 +30,12 @@ from lms.djangoapps.certificates.generation_handler import (
     is_using_v2_course_certificates as _is_using_v2_course_certificates,
     regenerate_user_certificates as _regenerate_user_certificates
 )
+from lms.djangoapps.certificates.data import CertificateStatuses
 from lms.djangoapps.certificates.models import (
+    CertificateAllowlist,
     CertificateGenerationConfiguration,
     CertificateGenerationCourseSetting,
     CertificateInvalidation,
-    CertificateStatuses,
     CertificateTemplate,
     CertificateTemplateAsset,
     CertificateWhitelist,
@@ -263,7 +264,7 @@ def certificate_downloadable_status(student, course_key):
     course_overview = CourseOverview.get_from_id(course_key)
     if (
         not certificates_viewable_for_course(course_overview) and
-        (current_status['status'] in CertificateStatuses.PASSED_STATUSES) and
+        CertificateStatuses.is_passing_status(current_status['status']) and
         course_overview.certificate_available_date
     ):
         response_data['earned_but_not_available'] = True
@@ -628,6 +629,15 @@ def create_or_update_certificate_allowlist_entry(user, course_key, notes, enable
         }
     )
 
+    __, __ = CertificateAllowlist.objects.update_or_create(
+        user=user,
+        course_id=course_key,
+        defaults={
+            'allowlist': enabled,
+            'notes': notes,
+        }
+    )
+
     log.info(f"Updated the allowlist of course {course_key} with student {user.id} and enabled={enabled}")
 
     return certificate_allowlist, created
@@ -641,19 +651,26 @@ def remove_allowlist_entry(user, course_key):
     Returns the result of the removal operation as a bool.
     """
     log.info(f"Removing student {user.id} from the allowlist in course {course_key}")
+    deleted = False
 
     allowlist_entry = get_allowlist_entry(user, course_key)
     if allowlist_entry:
         certificate = get_certificate_for_user(user.username, course_key, False)
         if certificate:
             log.info(f"Invalidating certificate for student {user.id} in course {course_key} before allowlist removal.")
-            certificate.invalidate()
+            certificate.invalidate(source='allowlist_removal')
 
         log.info(f"Removing student {user.id} from the allowlist in course {course_key}.")
         allowlist_entry.delete()
-        return True
+        deleted = True
 
-    return False
+    new_model_entry = _get_allowlist_entry_from_new_model(user, course_key)
+    if new_model_entry:
+        log.info(f"Allowlist entry exists in the new allowlist model for student {user.id} in course {course_key}, "
+                 f"and will be removed.")
+        new_model_entry.delete()
+
+    return deleted
 
 
 def get_allowlist_entry(user, course_key):
@@ -665,6 +682,20 @@ def get_allowlist_entry(user, course_key):
         allowlist_entry = CertificateWhitelist.objects.get(user=user, course_id=course_key)
     except ObjectDoesNotExist:
         log.warning(f"No allowlist entry found for student {user.id} in course {course_key}.")
+        return None
+
+    return allowlist_entry
+
+
+def _get_allowlist_entry_from_new_model(user, course_key):
+    """
+    Retrieves and returns an allowlist entry from the allowlist model.
+
+    This is temporary code until we switch completely from the CertificateWhitelist to the CertificateAllowlist.
+    """
+    try:
+        allowlist_entry = CertificateAllowlist.objects.get(user=user, course_id=course_key)
+    except ObjectDoesNotExist:
         return None
 
     return allowlist_entry

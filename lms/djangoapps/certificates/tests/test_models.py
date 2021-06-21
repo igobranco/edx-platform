@@ -4,11 +4,12 @@
 import json
 from unittest.mock import patch
 
-import pytest
 import ddt
+import pytest
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.paginator import Paginator
 from django.test import TestCase
 from django.test.utils import override_settings
 from opaque_keys.edx.locator import CourseKey, CourseLocator
@@ -16,19 +17,28 @@ from path import Path as path
 
 from common.djangoapps.student.tests.factories import AdminFactory, UserFactory
 from lms.djangoapps.certificates.models import (
+    CertificateAllowlist,
     CertificateGenerationHistory,
     CertificateHtmlViewConfiguration,
     CertificateInvalidation,
     CertificateStatuses,
     CertificateTemplateAsset,
+    CertificateWhitelist,
     ExampleCertificate,
     ExampleCertificateSet,
     GeneratedCertificate
 )
-from lms.djangoapps.certificates.tests.factories import CertificateInvalidationFactory, GeneratedCertificateFactory
+from lms.djangoapps.certificates.tests.factories import (
+    CertificateAllowlistFactory
+)
+from lms.djangoapps.certificates.tests.factories import (
+    CertificateInvalidationFactory,
+    GeneratedCertificateFactory,
+    TemporaryCertificateAllowlistFactory,
+)
 from lms.djangoapps.instructor_task.tests.factories import InstructorTaskFactory
 from openedx.core.djangoapps.content.course_overviews.tests.factories import CourseOverviewFactory
-from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase, SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory
 
 FEATURES_INVALID_FILE_PATH = settings.FEATURES.copy()
@@ -47,7 +57,7 @@ class ExampleCertificateTest(TestCase):
 
     DESCRIPTION = 'test'
     TEMPLATE = 'test.pdf'
-    DOWNLOAD_URL = 'http://www.example.com'
+    DOWNLOAD_URL = 'https://www.example.com'
     ERROR_REASON = 'Kaboom!'
 
     def setUp(self):
@@ -105,11 +115,11 @@ class CertificateHtmlViewConfigurationTest(TestCase):
         super().setUp()
         self.configuration_string = """{
             "default": {
-                "url": "http://www.edx.org",
-                "logo_src": "http://www.edx.org/static/images/logo.png"
+                "url": "https://www.edx.org",
+                "logo_src": "https://www.edx.org/static/images/logo.png"
             },
             "honor": {
-                "logo_src": "http://www.edx.org/static/images/honor-logo.png"
+                "logo_src": "https://www.edx.org/static/images/honor-logo.png"
             }
         }"""
         self.config = CertificateHtmlViewConfiguration(configuration=self.configuration_string)
@@ -136,11 +146,11 @@ class CertificateHtmlViewConfigurationTest(TestCase):
         self.config.save()
         expected_config = {
             "default": {
-                "url": "http://www.edx.org",
-                "logo_src": "http://www.edx.org/static/images/logo.png"
+                "url": "https://www.edx.org",
+                "logo_src": "https://www.edx.org/static/images/logo.png"
             },
             "honor": {
-                "logo_src": "http://www.edx.org/static/images/honor-logo.png"
+                "logo_src": "https://www.edx.org/static/images/honor-logo.png"
             }
         }
         assert self.config.get_config() == expected_config
@@ -240,8 +250,8 @@ class TestCertificateGenerationHistory(TestCase):
     Test the CertificateGenerationHistory model's methods
     """
     @ddt.data(
-        ({"student_set": "whitelisted_not_generated"}, "For exceptions", True),
-        ({"student_set": "whitelisted_not_generated"}, "For exceptions", False),
+        ({"student_set": "allowlisted_not_generated"}, "For exceptions", True),
+        ({"student_set": "allowlisted_not_generated"}, "For exceptions", False),
         # check "students" key for backwards compatibility
         ({"students": [1, 2, 3]}, "For exceptions", True),
         ({"students": [1, 2, 3]}, "For exceptions", False),
@@ -301,6 +311,9 @@ class CertificateInvalidationTest(SharedModuleStoreTestCase):
     def setUp(self):
         super().setUp()
         self.course = CourseFactory()
+        self.course_overview = CourseOverviewFactory.create(
+            id=self.course.id
+        )
         self.user = UserFactory()
         self.course_id = self.course.id  # pylint: disable=no-member
         self.certificate = GeneratedCertificateFactory.create(
@@ -358,7 +371,18 @@ class GeneratedCertificateTest(SharedModuleStoreTestCase):
         self.course = CourseOverviewFactory()
         self.course_key = self.course.id
 
-    def test_invalidate(self):
+    def _assert_event_data(self, mocked_function_call, expected_event_data):
+        """Utility function that verifies the mocked function was called with the expected arguments."""
+
+        mocked_function_call.assert_called_with(
+            'revoked',
+            self.user,
+            str(self.course_key),
+            event_data=expected_event_data
+        )
+
+    @patch('lms.djangoapps.certificates.utils.emit_certificate_event')
+    def test_invalidate(self, mock_emit_certificate_event):
         """
         Test the invalidate method
         """
@@ -367,12 +391,24 @@ class GeneratedCertificateTest(SharedModuleStoreTestCase):
             user=self.user,
             course_id=self.course_key
         )
-        cert.invalidate()
+        source = 'invalidated_test'
+        cert.invalidate(source=source)
 
         cert = GeneratedCertificate.objects.get(user=self.user, course_id=self.course_key)
         assert cert.status == CertificateStatuses.unavailable
 
-    def test_notpassing(self):
+        expected_event_data = {
+            'user_id': self.user.id,
+            'course_id': str(self.course_key),
+            'certificate_id': cert.verify_uuid,
+            'enrollment_mode': cert.mode,
+            'source': source,
+        }
+
+        self._assert_event_data(mock_emit_certificate_event, expected_event_data)
+
+    @patch('lms.djangoapps.certificates.utils.emit_certificate_event')
+    def test_notpassing(self, mock_emit_certificate_event):
         """
         Test the notpassing method
         """
@@ -382,13 +418,25 @@ class GeneratedCertificateTest(SharedModuleStoreTestCase):
             course_id=self.course_key
         )
         grade = '.3'
-        cert.mark_notpassing(grade)
+        source = "notpassing_test"
+        cert.mark_notpassing(grade, source=source)
 
         cert = GeneratedCertificate.objects.get(user=self.user, course_id=self.course_key)
         assert cert.status == CertificateStatuses.notpassing
         assert cert.grade == grade
 
-    def test_unverified(self):
+        expected_event_data = {
+            'user_id': self.user.id,
+            'course_id': str(self.course_key),
+            'certificate_id': cert.verify_uuid,
+            'enrollment_mode': cert.mode,
+            'source': source,
+        }
+
+        self._assert_event_data(mock_emit_certificate_event, expected_event_data)
+
+    @patch('lms.djangoapps.certificates.utils.emit_certificate_event')
+    def test_unverified(self, mock_emit_certificate_event):
         """
         Test the unverified method
         """
@@ -397,7 +445,187 @@ class GeneratedCertificateTest(SharedModuleStoreTestCase):
             user=self.user,
             course_id=self.course_key
         )
-        cert.mark_unverified()
+        source = "unverified_test"
+        cert.mark_unverified(source=source)
 
         cert = GeneratedCertificate.objects.get(user=self.user, course_id=self.course_key)
         assert cert.status == CertificateStatuses.unverified
+
+        expected_event_data = {
+            'user_id': self.user.id,
+            'course_id': str(self.course_key),
+            'certificate_id': cert.verify_uuid,
+            'enrollment_mode': cert.mode,
+            'source': source,
+        }
+
+        self._assert_event_data(mock_emit_certificate_event, expected_event_data)
+
+
+class CertificateAllowlistTest(SharedModuleStoreTestCase):
+    """
+    Tests for the CertificateAllowlist model.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.username = 'fun_username'
+        self.user_email = 'a@b.com'
+        self.user = UserFactory(username=self.username, email=self.user_email)
+        self.second_user = UserFactory()
+
+        self.course_run = CourseFactory()
+        self.course_run_key = self.course_run.id  # pylint: disable=no-member
+
+    def test_get_allowlist_empty(self):
+        ret = CertificateAllowlist.get_certificate_allowlist(course_id=None, student=None)
+        assert len(ret) == 0
+
+    def test_get_allowlist_multiple_users(self):
+        TemporaryCertificateAllowlistFactory.create(course_id=self.course_run_key, user=self.user)
+        TemporaryCertificateAllowlistFactory.create(course_id=self.course_run_key, user=self.second_user)
+
+        ret = CertificateAllowlist.get_certificate_allowlist(course_id=self.course_run_key)
+        assert len(ret) == 2
+
+    def test_get_allowlist_no_cert(self):
+        allowlist_item = TemporaryCertificateAllowlistFactory.create(course_id=self.course_run_key, user=self.user)
+        TemporaryCertificateAllowlistFactory.create(course_id=self.course_run_key, user=self.second_user)
+
+        ret = CertificateAllowlist.get_certificate_allowlist(course_id=self.course_run_key, student=self.user)
+        assert len(ret) == 1
+
+        item = ret[0]
+        assert item['id'] == allowlist_item.id
+        assert item['user_id'] == self.user.id
+        assert item['user_name'] == self.username
+        assert item['user_email'] == self.user_email
+        assert item['course_id'] == str(self.course_run_key)
+        assert item['created'] == allowlist_item.created.strftime("%B %d, %Y")
+        assert item['certificate_generated'] == ''
+        assert item['notes'] == allowlist_item.notes
+
+    def test_get_allowlist_cert(self):
+        allowlist_item = TemporaryCertificateAllowlistFactory.create(course_id=self.course_run_key, user=self.user)
+        cert = GeneratedCertificateFactory.create(
+            status=CertificateStatuses.downloadable,
+            user=self.user,
+            course_id=self.course_run_key
+        )
+
+        ret = CertificateAllowlist.get_certificate_allowlist(course_id=self.course_run_key, student=self.user)
+        assert len(ret) == 1
+
+        item = ret[0]
+        assert item['id'] == allowlist_item.id
+        assert item['certificate_generated'] == cert.created_date.strftime("%B %d, %Y")
+
+
+class TemporaryMigrationTests(ModuleStoreTestCase):
+    """
+    Temporary tests for the allowlist data migration
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.course = CourseFactory.create(
+            org='edx',
+            number='verified',
+            display_name='Verified Course'
+        )
+        self.key = self.course.id
+
+        self.u1 = UserFactory.create()
+        self.u2 = UserFactory.create()
+        self.u3 = UserFactory.create()
+
+    def _migrate(self):
+        """
+        Migrate the data
+        """
+        whitelisted = CertificateWhitelist.objects.all().order_by('id')
+        paginator = Paginator(whitelisted, 1)
+
+        for page_num in paginator.page_range:
+            page = paginator.page(page_num)
+
+            for w in page.object_list:
+                CertificateAllowlist.objects.update_or_create(
+                    user_id=w.user_id,
+                    course_id=w.course_id,
+                    defaults={
+                        'allowlist': w.whitelist,
+                        'notes': w.notes,
+                    }
+                )
+
+    def test_migration(self):
+        """
+        Temporary test for the allowlist data migration
+        """
+        TemporaryCertificateAllowlistFactory.create(
+            user=self.u1,
+            course_id=self.key,
+        )
+
+        CertificateAllowlistFactory.create(
+            user=self.u1,
+            course_id=self.key,
+            whitelist=False,
+            notes='nope'
+        )
+        CertificateAllowlistFactory.create(
+            user=self.u2,
+            course_id=self.key,
+        )
+
+        self._migrate()
+
+        whitelisted = CertificateWhitelist.objects.all()
+        allowlisted = CertificateAllowlist.objects.all()
+        assert len(whitelisted) == len(allowlisted)
+
+        a = CertificateAllowlist.objects.get(user_id=self.u1.id)
+        assert a.allowlist is False
+        assert a.notes == 'nope'
+
+        a = CertificateAllowlist.objects.get(user_id=self.u2.id)
+        assert a.allowlist is True
+
+    def test_migration_empty(self):
+        """
+        Temporary test for the allowlist data migration when the allowlist is empty
+        """
+        CertificateAllowlistFactory.create(
+            user=self.u1,
+            course_id=self.key,
+            whitelist=False
+        )
+        CertificateAllowlistFactory.create(
+            user=self.u2,
+            course_id=self.key,
+        )
+        CertificateAllowlistFactory.create(
+            user=self.u3,
+            course_id=self.key,
+        )
+
+        self._migrate()
+
+        whitelisted = CertificateWhitelist.objects.all()
+        allowlisted = CertificateAllowlist.objects.all()
+        assert len(whitelisted) == len(allowlisted)
+
+    def test_migration_both_empty(self):
+        """
+        Temporary test for the allowlist data migration when both models are empty
+        """
+        whitelisted = CertificateWhitelist.objects.all()
+        assert len(whitelisted) == 0
+
+        self._migrate()
+
+        whitelisted = CertificateWhitelist.objects.all()
+        allowlisted = CertificateAllowlist.objects.all()
+        assert len(whitelisted) == len(allowlisted)

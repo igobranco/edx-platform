@@ -16,7 +16,6 @@ from xmodule.modulestore.django import modulestore
 from xmodule.tabs import CourseTab, CourseTabList, InvalidTabsException, StaticTab
 
 from ..utils import get_lms_link_for_item
-
 __all__ = ['tabs_handler']
 
 

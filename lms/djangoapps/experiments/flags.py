@@ -175,6 +175,8 @@ class ExperimentWaffleFlag(CourseWaffleFlag):
 
         Arguments:
             course_key (Optional[CourseKey])
+                This argument should always be passed in a course-aware context even if
+                course aware bucketing is False.
             track (bool):
                 Whether an analytics event should be generated if the user is
                 bucketed for the first time.
@@ -265,7 +267,7 @@ class ExperimentWaffleFlag(CourseWaffleFlag):
             request.session[session_key] = True
 
             # Temporary event for AA-759 experiment
-            if course_key and self._experiment_name == 'AA-759':
+            if course_key and self._experiment_name == 'discount_experiment_AA759':
                 modes_dict = CourseMode.modes_for_course_dict(course_id=course_key, include_expired=False)
                 verified_mode = modes_dict.get('verified', None)
                 if verified_mode:
@@ -273,7 +275,7 @@ class ExperimentWaffleFlag(CourseWaffleFlag):
                         user_id=user.id,
                         event_name='edx.bi.experiment.AA759.bucketed',
                         properties={
-                            'course_id': course_key,
+                            'course_id': str(course_key),
                             'bucket': bucket,
                             'sku': verified_mode.sku,
                         }

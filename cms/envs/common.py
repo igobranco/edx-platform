@@ -340,7 +340,6 @@ FEATURES = {
     # Prevent auto auth from creating superusers or modifying existing users
     'RESTRICT_AUTOMATIC_AUTH': True,
 
-    'ENABLE_INSTRUCTOR_ANALYTICS': False,
     'PREVIEW_LMS_BASE': "preview.localhost:18000",
     'ENABLE_GRADE_DOWNLOADS': True,
     'ENABLE_MKTG_SITE': False,
@@ -2416,3 +2415,7 @@ DEFAULT_EMAIL_LOGO_URL = 'https://edx-cdn.org/v3/default/logo.png'
 ############## Settings for course import olx validation ############################
 COURSE_OLX_VALIDATION_STAGE = 1
 COURSE_OLX_VALIDATION_IGNORE_LIST = None
+
+################# show account activate cta after register ########################
+SHOW_ACTIVATE_CTA_POPUP_COOKIE_NAME = 'show-account-activation-popup'
+SHOW_ACCOUNT_ACTIVATION_CTA = False
