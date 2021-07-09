@@ -102,6 +102,7 @@ class OutlineTabView(RetrieveAPIView):
                 children: (list) If the block has child blocks, a list of IDs of
                     the child blocks.
                 resume_block: (bool) Whether the block is the resume block
+                has_scheduled_content: (bool) Whether the block has more content scheduled for the future
         course_goals:
             goal_options: (list) A list of goals where each goal is represented as a tuple (goal_key, goal_string)
             selected_goal:
@@ -310,7 +311,7 @@ class OutlineTabView(RetrieveAPIView):
                         # another type, just skip it (don't filter it out).
                         seq_data['type'] != 'sequential'
                     )
-                ]
+                ] if 'children' in chapter_data else []
 
         data = {
             'access_expiration': access_expiration,

@@ -23,11 +23,9 @@ from common.djangoapps.student.api import is_user_enrolled_in_course
 from common.djangoapps.student.models import CourseEnrollment
 from lms.djangoapps.branding import api as branding_api
 from lms.djangoapps.certificates.generation_handler import (
-    can_generate_certificate_task as _can_generate_certificate_task,
     generate_certificate_task as _generate_certificate_task,
     generate_user_certificates as _generate_user_certificates,
     is_on_certificate_allowlist as _is_on_certificate_allowlist,
-    is_using_v2_course_certificates as _is_using_v2_course_certificates,
     regenerate_user_certificates as _regenerate_user_certificates
 )
 from lms.djangoapps.certificates.data import CertificateStatuses
@@ -38,7 +36,6 @@ from lms.djangoapps.certificates.models import (
     CertificateInvalidation,
     CertificateTemplate,
     CertificateTemplateAsset,
-    CertificateWhitelist,
     ExampleCertificateSet,
     GeneratedCertificate,
     certificate_status_for_student
@@ -53,15 +50,6 @@ from openedx.core.djangoapps.content.course_overviews.models import CourseOvervi
 log = logging.getLogger("edx.certificate")
 User = get_user_model()
 MODES = GeneratedCertificate.MODES
-
-
-def is_passing_status(cert_status):
-    """
-    Given the status of a certificate, return a boolean indicating whether
-    the student passed the course.  This just proxies to the classmethod
-    defined in models.py
-    """
-    return CertificateStatuses.is_passing_status(cert_status)
 
 
 def _format_certificate_for_user(username, cert):
@@ -83,7 +71,7 @@ def _format_certificate_for_user(username, cert):
             "grade": cert.grade,
             "created": cert.created_date,
             "modified": cert.modified_date,
-            "is_passing": is_passing_status(cert.status),
+            "is_passing": CertificateStatuses.is_passing_status(cert.status),
             "is_pdf_certificate": bool(cert.download_url),
             "download_url": (
                 cert.download_url or get_certificate_url(cert.user.id, cert.course_id, uuid=cert.verify_uuid,
@@ -113,7 +101,7 @@ def get_certificates_for_user(username):
             "course_key": CourseLocator('edX', 'DemoX', 'Demo_Course', None, None),
             "type": "verified",
             "status": "downloadable",
-            "download_url": "http://www.example.com/cert.pdf",
+            "download_url": "https://www.example.com/cert.pdf",
             "grade": "0.98",
             "created": 2015-07-31T00:00:00Z,
             "modified": 2015-07-31T00:00:00Z
@@ -153,6 +141,19 @@ def get_certificate_for_user(username, course_key, format_results=True):
         return _format_certificate_for_user(username, cert)
     else:
         return cert
+
+
+def get_certificate_for_user_id(user, course_id):
+    """
+    Retrieve certificate information for a user in a specific course.
+
+    Arguments:
+        user (User): A Django User.
+        course_id (CourseKey): Course ID
+    Returns:
+        A GeneratedCertificate object.
+    """
+    return GeneratedCertificate.certificate_for_student(user, course_id)
 
 
 def get_certificates_for_user_by_course_keys(user, course_keys):
@@ -205,17 +206,6 @@ def generate_user_certificates(student, course_key, insecure=False, generation_m
 
 def regenerate_user_certificates(student, course_key, forced_grade=None, template_file=None, insecure=False):
     return _regenerate_user_certificates(student, course_key, forced_grade, template_file, insecure)
-
-
-def can_generate_certificate_task(user, course_key):
-    """
-    Determine if we can create a task to generate a certificate for this user in this course run.
-
-    This will return True if either:
-    - the course run is using the allowlist and the user is on the allowlist, or
-    - the course run is using v2 course certificates
-    """
-    return _can_generate_certificate_task(user, course_key)
 
 
 def generate_certificate_task(user, course_key, generation_mode=None):
@@ -411,7 +401,7 @@ def example_certificates_status(course_key):
             {
                 'description': 'honor',
                 'status': 'success',
-                'download_url': 'http://www.example.com/abcd/honor_cert.pdf'
+                'download_url': 'https://www.example.com/abcd/honor_cert.pdf'
             },
             {
                 'description': 'verified',
@@ -613,23 +603,14 @@ def get_allowlisted_users(course_key):
     """
     Return the users who are on the allowlist for this course run
     """
-    return User.objects.filter(certificatewhitelist__course_id=course_key, certificatewhitelist__whitelist=True)
+    return User.objects.filter(certificateallowlist__course_id=course_key, certificateallowlist__allowlist=True)
 
 
 def create_or_update_certificate_allowlist_entry(user, course_key, notes, enabled=True):
     """
     Update-or-create an allowlist entry for a student in a given course-run.
     """
-    certificate_allowlist, created = CertificateWhitelist.objects.update_or_create(
-        user=user,
-        course_id=course_key,
-        defaults={
-            'whitelist': enabled,
-            'notes': notes,
-        }
-    )
-
-    __, __ = CertificateAllowlist.objects.update_or_create(
+    certificate_allowlist, created = CertificateAllowlist.objects.update_or_create(
         user=user,
         course_id=course_key,
         defaults={
@@ -664,12 +645,6 @@ def remove_allowlist_entry(user, course_key):
         allowlist_entry.delete()
         deleted = True
 
-    new_model_entry = _get_allowlist_entry_from_new_model(user, course_key)
-    if new_model_entry:
-        log.info(f"Allowlist entry exists in the new allowlist model for student {user.id} in course {course_key}, "
-                 f"and will be removed.")
-        new_model_entry.delete()
-
     return deleted
 
 
@@ -679,23 +654,9 @@ def get_allowlist_entry(user, course_key):
     """
     log.info(f"Attempting to retrieve an allowlist entry for student {user.id} in course {course_key}.")
     try:
-        allowlist_entry = CertificateWhitelist.objects.get(user=user, course_id=course_key)
-    except ObjectDoesNotExist:
-        log.warning(f"No allowlist entry found for student {user.id} in course {course_key}.")
-        return None
-
-    return allowlist_entry
-
-
-def _get_allowlist_entry_from_new_model(user, course_key):
-    """
-    Retrieves and returns an allowlist entry from the allowlist model.
-
-    This is temporary code until we switch completely from the CertificateWhitelist to the CertificateAllowlist.
-    """
-    try:
         allowlist_entry = CertificateAllowlist.objects.get(user=user, course_id=course_key)
     except ObjectDoesNotExist:
+        log.warning(f"No allowlist entry found for student {user.id} in course {course_key}.")
         return None
 
     return allowlist_entry
@@ -761,18 +722,11 @@ def get_certificate_invalidation_entry(certificate):
     return certificate_invalidation_entry
 
 
-def is_using_v2_course_certificates(course_key):
-    """
-    Determines if the given course run is using V2 of course certificates
-    """
-    return _is_using_v2_course_certificates(course_key)
-
-
 def get_allowlist(course_key):
     """
     Return the certificate allowlist for the given course run
     """
-    return CertificateWhitelist.get_certificate_white_list(course_key)
+    return CertificateAllowlist.get_certificate_allowlist(course_key)
 
 
 def get_enrolled_allowlisted_users(course_key):
@@ -783,8 +737,8 @@ def get_enrolled_allowlisted_users(course_key):
     """
     users = CourseEnrollment.objects.users_enrolled_in(course_key)
     return users.filter(
-        certificatewhitelist__course_id=course_key,
-        certificatewhitelist__whitelist=True
+        certificateallowlist__course_id=course_key,
+        certificateallowlist__allowlist=True
     )
 
 

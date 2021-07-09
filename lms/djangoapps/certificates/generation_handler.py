@@ -8,62 +8,22 @@ cannot be generated, a message is logged and no further action is taken.
 
 import logging
 
-from edx_toggles.toggles import LegacyWaffleFlagNamespace
-
 from common.djangoapps.course_modes import api as modes_api
 from common.djangoapps.student.models import CourseEnrollment
 from lms.djangoapps.certificates.data import CertificateStatuses
 from lms.djangoapps.certificates.models import (
+    CertificateAllowlist,
     CertificateInvalidation,
-    CertificateWhitelist,
     GeneratedCertificate
 )
-from lms.djangoapps.certificates.queue import XQueueCertInterface
 from lms.djangoapps.certificates.tasks import CERTIFICATE_DELAY_SECONDS, generate_certificate
-from lms.djangoapps.certificates.utils import (
-    emit_certificate_event,
-    has_html_certificates_enabled
-)
+from lms.djangoapps.certificates.utils import has_html_certificates_enabled
 from lms.djangoapps.grades.api import CourseGradeFactory
 from lms.djangoapps.instructor.access import list_with_level
 from lms.djangoapps.verify_student.services import IDVerificationService
 from openedx.core.djangoapps.content.course_overviews.api import get_course_overview_or_none
-from openedx.core.djangoapps.waffle_utils import CourseWaffleFlag
 
 log = logging.getLogger(__name__)
-
-WAFFLE_FLAG_NAMESPACE = LegacyWaffleFlagNamespace(name='certificates_revamp')
-
-# .. toggle_name: certificates_revamp.use_updated
-# .. toggle_implementation: CourseWaffleFlag
-# .. toggle_default: False
-# .. toggle_description: Waffle flag to enable the updated regular (non-allowlist) course certificate logic on a
-#   per-course run basis.
-# .. toggle_use_cases: temporary
-# .. toggle_creation_date: 2021-03-05
-# .. toggle_target_removal_date: 2022-03-05
-# .. toggle_tickets: MICROBA-923
-CERTIFICATES_USE_UPDATED = CourseWaffleFlag(
-    waffle_namespace=WAFFLE_FLAG_NAMESPACE,
-    flag_name='use_updated',
-    module_name=__name__,
-)
-
-
-def can_generate_certificate_task(user, course_key):
-    """
-    Determine if we can create a task to generate a certificate for this user in this course run.
-
-    This will return True if either:
-    - the user is on the allowlist for the course run, or
-    - the course run is using v2 course certificates
-    """
-    if is_on_certificate_allowlist(user, course_key):
-        return True
-    elif is_using_v2_course_certificates(course_key):
-        return True
-
-    return False
 
 
 def generate_certificate_task(user, course_key, generation_mode=None):
@@ -79,13 +39,8 @@ def generate_certificate_task(user, course_key, generation_mode=None):
                  f'certificate.')
         return generate_allowlist_certificate_task(user, course_key, generation_mode)
 
-    elif is_using_v2_course_certificates(course_key):
-        log.info(f'{course_key} is using v2 course certificates. Attempt will be made to generate a certificate for '
-                 f'user {user.id}.')
-        return generate_regular_certificate_task(user, course_key, generation_mode)
-
-    log.info(f'Neither an allowlist nor a v2 course certificate can be generated for {user.id} : {course_key}.')
-    return False
+    log.info(f'Attempt will be made to generate course certificate for user {user.id} : {course_key}')
+    return generate_regular_certificate_task(user, course_key, generation_mode)
 
 
 def generate_allowlist_certificate_task(user, course_key, generation_mode=None):
@@ -93,7 +48,7 @@ def generate_allowlist_certificate_task(user, course_key, generation_mode=None):
     Create a task to generate an allowlist certificate for this user in this course run.
     """
     if _can_generate_allowlist_certificate(user, course_key):
-        return _generate_certificate_task(user, course_key, generation_mode)
+        return _generate_certificate_task(user=user, course_key=course_key, generation_mode=generation_mode)
 
     status = _set_allowlist_cert_status(user, course_key)
     if status is not None:
@@ -108,7 +63,7 @@ def generate_regular_certificate_task(user, course_key, generation_mode=None):
     eligible and a certificate can be generated.
     """
     if _can_generate_v2_certificate(user, course_key):
-        return _generate_certificate_task(user, course_key, generation_mode)
+        return _generate_certificate_task(user=user, course_key=course_key, generation_mode=generation_mode)
 
     status = _set_v2_cert_status(user, course_key)
     if status is not None:
@@ -117,7 +72,7 @@ def generate_regular_certificate_task(user, course_key, generation_mode=None):
     return False
 
 
-def _generate_certificate_task(user, course_key, generation_mode=None):
+def _generate_certificate_task(user, course_key, status=None, generation_mode=None):
     """
     Create a task to generate a certificate
     """
@@ -128,6 +83,8 @@ def _generate_certificate_task(user, course_key, generation_mode=None):
         'course_key': str(course_key),
         'v2_certificate': True
     }
+    if status is not None:
+        kwargs['status'] = status
     if generation_mode is not None:
         kwargs['generation_mode'] = generation_mode
 
@@ -161,11 +118,6 @@ def _can_generate_v2_certificate(user, course_key):
     Check if a v2 course certificate can be generated (created if it doesn't already exist, or updated if it does
     exist) for this user, in this course run.
     """
-    if not is_using_v2_course_certificates(course_key):
-        # This course run is not using the v2 course certificate feature
-        log.info(f'{course_key} is not using v2 course certificates. Certificate cannot be generated.')
-        return False
-
     if _is_ccx_course(course_key):
         log.info(f'{course_key} is a CCX course. Certificate cannot be generated for {user.id}.')
         return False
@@ -257,11 +209,9 @@ def _set_v2_cert_status(user, course_key):
     if status is not None:
         return status
 
-    course_grade = _get_course_grade(user, course_key)
-    if not course_grade.passed:
-        if cert is None:
-            cert = GeneratedCertificate.objects.create(user=user, course_id=course_key)
+    if IDVerificationService.user_is_verified(user) and not _has_passing_grade(user, course_key) and cert is not None:
         if cert.status != CertificateStatuses.notpassing:
+            course_grade = _get_course_grade(user, course_key)
             cert.mark_notpassing(course_grade.percent, source='certificate_generation')
         return CertificateStatuses.notpassing
 
@@ -275,17 +225,16 @@ def _get_cert_status_common(user, course_key, cert):
     This is used when a downloadable cert cannot be generated, but we want to provide more info about why it cannot
     be generated.
     """
-    if CertificateInvalidation.has_certificate_invalidation(user, course_key):
-        if cert is None:
-            cert = GeneratedCertificate.objects.create(user=user, course_id=course_key)
+    if CertificateInvalidation.has_certificate_invalidation(user, course_key) and cert is not None:
         if cert.status != CertificateStatuses.unavailable:
             cert.invalidate(source='certificate_generation')
         return CertificateStatuses.unavailable
 
-    if not IDVerificationService.user_is_verified(user):
+    if not IDVerificationService.user_is_verified(user) and _has_passing_grade_or_is_allowlisted(user, course_key):
         if cert is None:
-            cert = GeneratedCertificate.objects.create(user=user, course_id=course_key)
-        if cert.status != CertificateStatuses.unverified:
+            _generate_certificate_task(user=user, course_key=course_key, generation_mode='batch',
+                                       status=CertificateStatuses.unverified)
+        elif cert.status != CertificateStatuses.unverified:
             cert.mark_unverified(source='certificate_generation')
         return CertificateStatuses.unverified
 
@@ -306,9 +255,6 @@ def _can_set_v2_cert_status(user, course_key):
     """
     Determine whether we can set a custom (non-downloadable) cert status for a V2 certificate
     """
-    if not is_using_v2_course_certificates(course_key):
-        return False
-
     if _is_ccx_course(course_key):
         return False
 
@@ -342,21 +288,11 @@ def _can_set_cert_status_common(user, course_key):
     return True
 
 
-def is_using_v2_course_certificates(course_key):    # pylint: disable=unused-argument
-    """
-    Return True if the course run is using v2 course certificates
-
-    Note: this currently always returns True. This is an interim step as we roll out the feature to all course runs,
-    and the method will be removed entirely in MICROBA-1083.
-    """
-    return True
-
-
 def is_on_certificate_allowlist(user, course_key):
     """
     Check if the user is on the allowlist, and is enabled for the allowlist, for this course run
     """
-    return CertificateWhitelist.objects.filter(user=user, course_id=course_key, whitelist=True).exists()
+    return CertificateAllowlist.objects.filter(user=user, course_id=course_key, allowlist=True).exists()
 
 
 def _can_generate_certificate_for_status(user, course_key):
@@ -392,6 +328,17 @@ def _is_ccx_course(course_key):
     return hasattr(course_key, 'ccx')
 
 
+def _has_passing_grade_or_is_allowlisted(user, course_key):
+    """
+    Check if the user has a passing grade in this course run, or is on the allowlist and so is exempt from needing
+    a passing grade.
+    """
+    if is_on_certificate_allowlist(user, course_key):
+        return True
+
+    return _has_passing_grade(user, course_key)
+
+
 def _has_passing_grade(user, course_key):
     """
     Check if the user has a passing grade in this course run
@@ -422,7 +369,7 @@ def _is_cert_downloadable(user, course_key):
     return True
 
 
-def generate_user_certificates(student, course_key, insecure=False, generation_mode='batch', forced_grade=None):
+def generate_user_certificates(student, course_key, insecure=False, generation_mode='batch', forced_grade=None):  # pylint: disable=unused-argument
     """
     It will add the add-cert request into the xqueue.
 
@@ -446,56 +393,14 @@ def generate_user_certificates(student, course_key, insecure=False, generation_m
         forced_grade - a string indicating to replace grade parameter. if present grading
                        will be skipped.
     """
-    if can_generate_certificate_task(student, course_key):
-        # Note that this will launch an asynchronous task, and so cannot return the certificate status. This is a
-        # change from the older certificate code that tries to immediately create a cert.
-        log.info(f'{course_key} is using V2 certificates. Attempt will be made to regenerate a V2 certificate for user '
-                 f'{student.id}.')
-        return generate_certificate_task(student, course_key)
-
-    beta_testers_queryset = list_with_level(course_key, 'beta')
-    if beta_testers_queryset.filter(username=student.username):
-        log.info(f"Canceling Certificate Generation task for user {student.id} : {course_key}. User is a Beta Tester.")
-        return
-
-    xqueue = XQueueCertInterface()
-    if insecure:
-        xqueue.use_https = False
-
-    course_overview = get_course_overview_or_none(course_key)
-    if not course_overview:
-        log.info(f"Canceling certificate generation for user {student.id} : {course_key} due to a missing course "
-                 f"overview.")
-        return
-
-    generate_pdf = not has_html_certificates_enabled(course_overview)
-
-    cert = xqueue.add_cert(
-        student,
-        course_key,
-        generate_pdf=generate_pdf,
-        forced_grade=forced_grade
-    )
-
-    log.info(f"Queued Certificate Generation task for {student.id} : {course_key}")
-
-    # If cert_status is not present in certificate valid_statuses (for example unverified) then
-    # add_cert returns None and raises AttributeError while accessing cert attributes.
-    if cert is None:
-        return
-
-    if CertificateStatuses.is_passing_status(cert.status):
-        emit_certificate_event('created', student, course_key, course_overview, {
-            'user_id': student.id,
-            'course_id': str(course_key),
-            'certificate_id': cert.verify_uuid,
-            'enrollment_mode': cert.mode,
-            'generation_mode': generation_mode
-        })
-    return cert.status
+    # Note that this will launch an asynchronous task, and so cannot return the certificate status. This is a
+    # change from the older certificate code that tries to immediately create a cert.
+    log.info(f'{course_key} is using V2 certificates. Attempt will be made to regenerate a V2 certificate for user '
+             f'{student.id}.')
+    return generate_certificate_task(student, course_key)
 
 
-def regenerate_user_certificates(student, course_key, forced_grade=None, template_file=None, insecure=False):
+def regenerate_user_certificates(student, course_key, forced_grade=None, template_file=None, insecure=False):  # pylint: disable=unused-argument
     """
     Add the regen-cert request into the xqueue.
 
@@ -514,30 +419,6 @@ def regenerate_user_certificates(student, course_key, forced_grade=None, templat
         template_file - The template file used to render this certificate
         insecure - (Boolean)
     """
-    if can_generate_certificate_task(student, course_key):
-        log.info(f"{course_key} is using V2 certificates. Attempt will be made to regenerate a V2 certificate for "
-                 f"user {student.id}.")
-        return generate_certificate_task(student, course_key)
-
-    xqueue = XQueueCertInterface()
-    if insecure:
-        xqueue.use_https = False
-
-    course_overview = get_course_overview_or_none(course_key)
-    if not course_overview:
-        log.info(f"Canceling certificate generation for user {student.id} : {course_key} due to a missing course "
-                 f"overview.")
-        return False
-
-    generate_pdf = not has_html_certificates_enabled(course_overview)
-    log.info(f"Started regenerating certificates for user {student.id} in course {course_key} with generate_pdf "
-             f"status: {generate_pdf}.")
-
-    xqueue.regen_cert(
-        student,
-        course_key,
-        forced_grade=forced_grade,
-        template_file=template_file,
-        generate_pdf=generate_pdf
-    )
-    return True
+    log.info(f"{course_key} is using V2 certificates. Attempt will be made to regenerate a V2 certificate for "
+             f"user {student.id}.")
+    return generate_certificate_task(student, course_key)
